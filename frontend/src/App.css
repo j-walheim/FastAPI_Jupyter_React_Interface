@@ -1,0 +1,60 @@
+.App {
+  font-family: Arial, sans-serif;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.App-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.App-header h1 {
+  margin: 0;
+  color: #333;
+}
+
+.connection-status {
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+.connected {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.disconnected {
+  background-color: #f44336;
+  color: white;
+}
+
+.App-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.execute-button {
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.execute-button:hover:not(:disabled) {
+  background-color: #45a049;
+}
+
+.execute-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}

@@ -1,14 +1,17 @@
 import React from 'react';
+import './CodeEditor.css';
 
-function CodeEditor({ code, setCode }) {
+function CodeEditor({ code, setCode, onKeyDown }) {
   return (
-    <textarea
-      value={code}
-      onChange={(e) => setCode(e.target.value)}
-      rows={10}
-      cols={50}
-      placeholder="Enter your Python code here..."
-    />
+    <div className="code-editor">
+      <textarea
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        onKeyDown={onKeyDown}
+        rows={10}
+        placeholder="Enter your Python code here..."
+      />
+    </div>
   );
 }
 

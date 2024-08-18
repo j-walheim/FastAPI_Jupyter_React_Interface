@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import CodeEditor from './components/CodeEditor';
 import OutputDisplay from './components/OutputDisplay';
+import './App.css';
 
 function App() {
   const [code, setCode] = useState('');
@@ -54,15 +55,36 @@ function App() {
     websocket.send(JSON.stringify({ type: 'execute', code }));
   };
 
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      handleCodeExecution();
+    }
+  };
+
   return (
     <div className="App">
-      <h1>Python Code Executor</h1>
-      <div>WebSocket Status: {isConnected ? 'Connected' : 'Disconnected'}</div>
-      <CodeEditor code={code} setCode={setCode} />
-      <button onClick={handleCodeExecution} disabled={!isConnected || isExecuting}>
-        {isExecuting ? 'Executing...' : 'Execute Code'}
-      </button>
-      <OutputDisplay output={output} />
+      <header className="App-header">
+        <h1>Python Code Executor</h1>
+        <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
+          {isConnected ? 'Connected' : 'Disconnected'}
+        </div>
+      </header>
+      <main className="App-main">
+        <CodeEditor 
+          code={code} 
+          setCode={setCode} 
+          onKeyDown={handleKeyDown}
+        />
+        <button 
+          className="execute-button" 
+          onClick={handleCodeExecution} 
+          disabled={!isConnected || isExecuting}
+        >
+          {isExecuting ? 'Executing...' : 'Execute Code'}
+        </button>
+        <OutputDisplay output={output} />
+      </main>
     </div>
   );
 }
