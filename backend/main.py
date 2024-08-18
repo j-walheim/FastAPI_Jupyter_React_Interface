@@ -1,9 +1,9 @@
 import asyncio
 import logging
 import traceback
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+import uuid
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from jupyter_client import KernelManager
 from jupyter_client.kernelspec import KernelSpecManager
 
@@ -33,15 +33,6 @@ km.start_kernel()
 kernel = km.client()
 kernel.start_channels()
 
-class CodeExecution(BaseModel):
-    code: str
-
-@app.post("/execute")
-async def execute_code(code_execution: CodeExecution):
-    logger.info(f"Executing code: {code_execution.code}")
-    msg_id = kernel.execute(code_execution.code)
-    return {"message": "Code execution started", "msg_id": msg_id}
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -49,34 +40,39 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         while True:
-            try:
-                msg = kernel.get_iopub_msg(timeout=1)
-                logger.info(f"Received message from kernel: {msg['msg_type']}")
+            data = await websocket.receive_json()
+            if data['type'] == 'execute':
+                code = data['code']
+                execution_id = str(uuid.uuid4())
+                logger.info(f"Executing code: {code}")
                 
-                if msg['msg_type'] == 'stream':
-                    output = msg['content']['text']
-                elif msg['msg_type'] in ['execute_result', 'display_data']:
-                    output = str(msg['content']['data'].get('text/plain', ''))
-                elif msg['msg_type'] == 'status' and msg['content']['execution_state'] == 'idle':
-                    output = "EXECUTION_COMPLETE"
-                else:
-                    continue  # Skip other message types
+                kernel.execute(code)
                 
-                logger.info(f"Sending output to frontend: {output}")
-                await websocket.send_json({"output": output})
-            except asyncio.TimeoutError:
-                pass  # This is expected behavior, just continue
+                output = []
+                while True:
+                    try:
+                        msg = kernel.get_iopub_msg(timeout=0.1)
+                        if msg['msg_type'] == 'stream':
+                            output.append(msg['content']['text'])
+                        elif msg['msg_type'] in ['execute_result', 'display_data']:
+                            output.append(str(msg['content']['data'].get('text/plain', '')))
+                        elif msg['msg_type'] == 'status' and msg['content']['execution_state'] == 'idle':
+                            break
+                    except:
+                        pass
+                
+                result = ''.join(output).strip()
+                logger.info(f"Execution result: {result}")
+                await websocket.send_json({
+                    'type': 'result',
+                    'execution_id': execution_id,
+                    'output': result
+                })
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.error(f"Error in WebSocket: {str(e)}")
         logger.error(traceback.format_exc())
-    finally:
-        logger.info("Closing WebSocket connection")
-
-@app.get("/kernels")
-async def list_kernels():
-    return {"kernels": list(ksm.find_kernel_specs().keys())}
 
 if __name__ == "__main__":
     import uvicorn

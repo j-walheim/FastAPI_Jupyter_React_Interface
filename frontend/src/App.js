@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import CodeEditor from './components/CodeEditor';
 import OutputDisplay from './components/OutputDisplay';
-import { executeCode } from './api';
 
 function App() {
   const [code, setCode] = useState('');
@@ -17,12 +16,11 @@ function App() {
       setIsConnected(true);
     };
     ws.onmessage = (event) => {
-      console.log('Received message from server:', event.data);
       const data = JSON.parse(event.data);
-      if (data.output === "EXECUTION_COMPLETE") {
+      if (data.type === 'result') {
+        console.log('Received execution result:', data.output);
+        setOutput(data.output);
         setIsExecuting(false);
-      } else {
-        setOutput(prevOutput => prevOutput + data.output);
       }
     };
     ws.onerror = (error) => {
@@ -32,7 +30,7 @@ function App() {
     ws.onclose = () => {
       console.log('WebSocket connection closed');
       setIsConnected(false);
-      setTimeout(connectWebSocket, 1000); // Attempt to reconnect after 1 second
+      setTimeout(connectWebSocket, 1000);
     };
     setWebsocket(ws);
   }, []);
@@ -46,21 +44,14 @@ function App() {
     };
   }, [connectWebSocket]);
 
-  const handleCodeExecution = async () => {
+  const handleCodeExecution = () => {
     if (!isConnected) {
       alert('WebSocket is not connected. Please wait and try again.');
       return;
     }
     setOutput('');
     setIsExecuting(true);
-    try {
-      console.log('Executing code:', code);
-      await executeCode(code);
-    } catch (error) {
-      console.error('Error executing code:', error);
-      setOutput(`Error: ${error.message}`);
-      setIsExecuting(false);
-    }
+    websocket.send(JSON.stringify({ type: 'execute', code }));
   };
 
   return (
