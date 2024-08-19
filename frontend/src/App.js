@@ -1,90 +1,54 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import CodeEditor from './components/CodeEditor';
-import OutputDisplay from './components/OutputDisplay';
-import './App.css';
+import React, { useState, useEffect, useRef } from 'react';
+import PlotlyComponent from './components/PlotlyComponent';
 
 function App() {
-  const [code, setCode] = useState('');
+  const [inputCode, setInputCode] = useState('');
   const [output, setOutput] = useState('');
-  const [websocket, setWebsocket] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [isExecuting, setIsExecuting] = useState(false);
-
-  const connectWebSocket = useCallback(() => {
-    const ws = new WebSocket('ws://localhost:8000/ws');
-    ws.onopen = () => {
-      console.log('WebSocket connection established');
-      setIsConnected(true);
-    };
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'result') {
-        console.log('Received execution result:', data.output);
-        setOutput(data.output);
-        setIsExecuting(false);
-      }
-    };
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setIsConnected(false);
-    };
-    ws.onclose = () => {
-      console.log('WebSocket connection closed');
-      setIsConnected(false);
-      setTimeout(connectWebSocket, 1000);
-    };
-    setWebsocket(ws);
-  }, []);
+  const [plotData, setPlotData] = useState(null);
+  const ws = useRef(null);
 
   useEffect(() => {
-    connectWebSocket();
-    return () => {
-      if (websocket) {
-        websocket.close();
+    ws.current = new WebSocket('ws://localhost:8000/ws');
+    ws.current.onopen = () => console.log('WebSocket Connected');
+    ws.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'result') {
+        setOutput(data.output);
+      } else if (data.type === 'plotly') {
+        setPlotData(data.plot_data);
       }
     };
-  }, [connectWebSocket]);
+    return () => {
+      ws.current.close();
+    };
+  }, []);
 
-  const handleCodeExecution = () => {
-    if (!isConnected) {
-      alert('WebSocket is not connected. Please wait and try again.');
-      return;
-    }
-    setOutput('');
-    setIsExecuting(true);
-    websocket.send(JSON.stringify({ type: 'execute', code }));
-  };
-
-  const handleKeyDown = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      handleCodeExecution();
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'execute', code: inputCode }));
     }
   };
 
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>Python Code Executor</h1>
-        <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
-          {isConnected ? 'Connected' : 'Disconnected'}
-        </div>
-      </header>
-      <main className="App-main">
-        <CodeEditor 
-          code={code} 
-          setCode={setCode} 
-          onKeyDown={handleKeyDown}
+      <h1>FastAPI Jupyter React Interface</h1>
+      <form onSubmit={handleSubmit}>
+        <textarea
+          value={inputCode}
+          onChange={(e) => setInputCode(e.target.value)}
+          placeholder="Enter Python code here"
         />
-        <button 
-          className="execute-button" 
-          onClick={handleCodeExecution} 
-          disabled={!isConnected || isExecuting}
-        >
-          {isExecuting ? 'Executing...' : 'Execute Code'}
-        </button>
-        <OutputDisplay output={output} />
-      </main>
+        <button type="submit">Execute</button>
+      </form>
+      <div>
+        <h2>Output:</h2>
+        <pre>{output}</pre>
+      </div>
+      <div>
+        <h2>Plot:</h2>
+        {plotData && <PlotlyComponent plotData={plotData} />}
+      </div>
     </div>
   );
 }

@@ -6,6 +6,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from jupyter_client import KernelManager
 from jupyter_client.kernelspec import KernelSpecManager
+import plotly.graph_objects as go
+import plotly.io as pio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,10 +35,30 @@ km.start_kernel()
 kernel = km.client()
 kernel.start_channels()
 
+#def create_sample_plot():
+#    fig = go.Figure(data=[go.Bar(y=[2, 1, 3])])
+#    return pio.to_json(fig)
+
+def create_sample_plot():
+    x = [1, 2, 3, 4, 5]
+    y = [1, 4, 2, 3, 5]
+    fig = go.Figure(data=go.Scatter(x=x, y=y, mode='lines'))
+    fig.update_layout(title='Sample Line Plot')
+    return pio.to_json(fig)
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection established")
+    
+    # Send the initial plot
+    sample_plot = create_sample_plot()
+    await websocket.send_json({
+        'type': 'plotly',
+        'execution_id': str(uuid.uuid4()),
+        'plot_data': sample_plot
+    })
     
     try:
         while True:
@@ -55,7 +77,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         if msg['msg_type'] == 'stream':
                             output.append(msg['content']['text'])
                         elif msg['msg_type'] in ['execute_result', 'display_data']:
-                            output.append(str(msg['content']['data'].get('text/plain', '')))
+                            if 'application/vnd.plotly.v1+json' in msg['content']['data']:
+                                plot_data = msg['content']['data']['application/vnd.plotly.v1+json']
+                                await websocket.send_json({
+                                    'type': 'plotly',
+                                    'execution_id': execution_id,
+                                    'plot_data': plot_data
+                                })
+                            else:
+                                output.append(str(msg['content']['data'].get('text/plain', '')))
                         elif msg['msg_type'] == 'status' and msg['content']['execution_state'] == 'idle':
                             break
                     except:
