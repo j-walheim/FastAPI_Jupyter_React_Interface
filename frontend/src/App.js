@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import PlotlyComponent from './components/PlotlyComponent';
+import CodeEditor from './components/CodeEditor';
+import OutputDisplay from './components/OutputDisplay';
 
 function App() {
-  const [inputCode, setInputCode] = useState('');
+  const [instructions, setInstructions] = useState('print Hello world');
   const [output, setOutput] = useState('');
+  const [generatedCode, setGeneratedCode] = useState('');
   const [plotData, setPlotData] = useState(null);
   const ws = useRef(null);
 
@@ -14,6 +17,7 @@ function App() {
       const data = JSON.parse(event.data);
       if (data.type === 'result') {
         setOutput(data.output);
+        setGeneratedCode(data.generated_code);
       } else if (data.type === 'plotly') {
         setPlotData(data.plot_data);
       }
@@ -26,7 +30,7 @@ function App() {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ type: 'execute', code: inputCode }));
+      ws.current.send(JSON.stringify({ type: 'execute', instructions: instructions }));
     }
   };
 
@@ -34,17 +38,18 @@ function App() {
     <div className="App">
       <h1>FastAPI Jupyter React Interface</h1>
       <form onSubmit={handleSubmit}>
-        <textarea
-          value={inputCode}
-          onChange={(e) => setInputCode(e.target.value)}
-          placeholder="Enter Python code here"
+        <CodeEditor
+          code={instructions}
+          setCode={setInstructions}
+          placeholder="Enter instructions here"
         />
-        <button type="submit">Execute</button>
+        <button type="submit">Generate and Execute Code</button>
       </form>
       <div>
-        <h2>Output:</h2>
-        <pre>{output}</pre>
+        <h2>Generated Code:</h2>
+        <pre>{generatedCode}</pre>
       </div>
+      <OutputDisplay output={output} />
       <div>
         <h2>Plot:</h2>
         {plotData && <PlotlyComponent plotData={plotData} />}
