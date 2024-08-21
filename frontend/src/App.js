@@ -4,7 +4,7 @@ import CodeEditor from './components/CodeEditor';
 import OutputDisplay from './components/OutputDisplay';
 
 function App() {
-  const [instructions, setInstructions] = useState('print Hello world');
+  const [instructions, setInstructions] = useState('create a survival plot for IO vs. Chemo and save it as survival.png');
   const [output, setOutput] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
   const [plotData, setPlotData] = useState(null);
