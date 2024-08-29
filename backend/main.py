@@ -54,7 +54,7 @@ def print_verbose(message):
         print(f"{Fore.CYAN}{message}{Style.RESET_ALL}")
 
 # Create a virtual environment
-venv_path = Path("venv")
+venv_path = Path("venv").absolute()
 venv.create(venv_path, with_pip=True)
 
 class CodingAgent:
@@ -90,7 +90,7 @@ class CodingAgent:
 class ExecutionAgent:
     def __init__(self):
         self.max_attempts = 5
-        self.coding_agent_dir = Path("coding_agent")
+        self.coding_agent_dir = Path("coding_agent").absolute()
         self.coding_agent_dir.mkdir(exist_ok=True)
 
     @observe()
@@ -113,7 +113,7 @@ class ExecutionAgent:
         script_file.write_text(python_code)
 
         # Execute Python code from the file
-        result = run_in_venv(str(script_file))
+        result = run_in_venv(str(script_file), self.coding_agent_dir, venv_path)
         success = result.returncode == 0
         
         print_verbose(f"ExecutionAgent: Execution result: {'Success' if success else 'Failure'}")
@@ -276,16 +276,22 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(traceback.format_exc())
 
 # Ensure these functions are defined
-def run_in_venv(script_path):
-    venv_python = os.path.join(venv_path, 'bin', 'python')
-    return subprocess.run([venv_python, script_path], capture_output=True, text=True)
+def run_in_venv(script_path, working_dir, venv_path):
+    venv_python = venv_path / 'bin' / 'python'
+    current_dir = os.getcwd()
+    try:
+        os.chdir(working_dir)
+        result = subprocess.run([str(venv_python), script_path], capture_output=True, text=True)
+    finally:
+        os.chdir(current_dir)
+    return result
 
 def install_packages(packages):
     if isinstance(packages, str):
         packages = [packages]
     results = []
     for package in packages:
-        venv_pip = os.path.join(venv_path, 'bin', 'pip')
+        venv_pip = venv_path / 'bin' / 'pip'
         result = subprocess.run(f"{venv_pip} install {package}", capture_output=True, text=True, shell=True)
         results.append(f"Installation result for {package}: {result.stdout}\n{result.stderr}")
     return "\n".join(results)
