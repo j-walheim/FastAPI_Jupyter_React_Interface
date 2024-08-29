@@ -267,11 +267,15 @@ async def agent_conversation(instructions, websocket, conversation_id, user_id):
         # Add coding agent message to conversation memory
         conversation_memory.add_message(conversation_id, user_id, "CodingAgent", "assistant", generated_code)
         
-        # Send generated code to frontend - intermediate result not used for now
+        # Send generated code to frontend
         await websocket.send_json({
-            'type': 'code_generated',
-            'execution_id': execution_id,
-            'generated_code': generated_code
+            'type': 'chat_message',
+            'message': {
+                'role': 'assistant',
+                'content': 'Generated Code:',
+                'details': generated_code,
+                'collapsible': True
+            }
         })
 
         # Execution agent executes the code
@@ -280,12 +284,15 @@ async def agent_conversation(instructions, websocket, conversation_id, user_id):
         # Add execution agent message to conversation memory
         conversation_memory.add_message(conversation_id, user_id, "ExecutionAgent", "system", execution_result)
         
-        # Send execution result to frontend - intermediate result not used for now
+        # Send execution result to frontend
         await websocket.send_json({
-            'type': 'execution_result',
-            'execution_id': execution_id,
-            'success': success,
-            'output': execution_result
+            'type': 'chat_message',
+            'message': {
+                'role': 'system',
+                'content': 'Execution Result:',
+                'details': execution_result,
+                'collapsible': True
+            }
         })
 
         if success:

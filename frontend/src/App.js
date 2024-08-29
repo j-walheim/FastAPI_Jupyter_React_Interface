@@ -4,6 +4,7 @@ import OutputDisplay from './components/OutputDisplay';
 import ConversationSidebar from './components/ConversationSidebar';
 import { v4 as uuidv4 } from 'uuid';
 import './App.css';
+import ChatMessage from './components/ChatMessage';
 
 function App() {
   const [instructions, setInstructions] = useState('create a survival plot for IO vs. Chemo and save it as survival.png');
@@ -11,6 +12,7 @@ function App() {
   const [generatedCode, setGeneratedCode] = useState('');
   const [conversationId, setConversationId] = useState('');
   const [conversations, setConversations] = useState([]);
+  const [chatHistory, setChatHistory] = useState([]);
   const ws = useRef(null);
 
   const handleNewConversation = () => {
@@ -35,9 +37,15 @@ function App() {
     };
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === 'result') {
+      if (data.type === 'chat_message') {
+        setChatHistory(prevHistory => [...prevHistory, data.message]);
+      } else if (data.type === 'result') {
         setOutput(data.output);
         setGeneratedCode(data.generated_code);
+        setChatHistory(prevHistory => [
+          ...prevHistory,
+          { role: 'assistant', content: data.output, collapsible: true }
+        ]);
       } else if (data.type === 'conversation_id') {
         setConversationId(data.conversation_id);
         setConversations(prevConversations => [
@@ -54,6 +62,8 @@ function App() {
         );
       } else if (data.type === 'all_conversations') {
         setConversations(data.conversations);
+      } else if (data.type === 'loaded_conversation') {
+        setChatHistory(data.messages);
       }
     };
     return () => {
@@ -64,20 +74,28 @@ function App() {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (ws.current.readyState === WebSocket.OPEN) {
+      setChatHistory(prevHistory => [
+        ...prevHistory,
+        { role: 'human', content: instructions }
+      ]);
       ws.current.send(JSON.stringify({ 
         type: 'execute', 
         instructions: instructions,
         conversation_id: conversationId
       }));
+      setInstructions('');
     }
   };
 
   const handleLoadConversation = (id) => {
     setConversationId(id);
-    ws.current.send(JSON.stringify({ 
-      type: 'load_conversation', 
-      conversation_id: id
-    }));
+    setChatHistory([]);  // Clear the current chat history
+    if (ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ 
+        type: 'load_conversation', 
+        conversation_id: id
+      }));
+    }
   };
 
   return (
@@ -91,6 +109,15 @@ function App() {
       <div className="main-content">
         <h1>FastAPI Jupyter React Interface</h1>
         <p>Current Conversation ID: {conversationId}</p>
+        <div className="chat-history">
+          {chatHistory.map((msg, index) => (
+            <ChatMessage
+              key={index}
+              message={msg}
+              isLastMessage={index === chatHistory.length - 1}
+            />
+          ))}
+        </div>
         <form onSubmit={handleSubmit}>
           <CodeEditor
             code={instructions}

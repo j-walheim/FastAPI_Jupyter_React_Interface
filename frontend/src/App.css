@@ -104,3 +104,34 @@ pre {
   font-size: 1.5rem;
   margin-bottom: 1rem;
 }
+
+.chat-history {
+  margin-bottom: 20px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.chat-message {
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.chat-message.user {
+  background-color: #e6f2ff;
+}
+
+.chat-message.ai {
+  background-color: #f0f0f0;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.message-content {
+  margin-top: 10px;
+}
