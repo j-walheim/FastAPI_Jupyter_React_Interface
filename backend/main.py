@@ -129,6 +129,7 @@ class ConversationMemory:
     def __init__(self, db_path='conversations.db'):
         self.conn = sqlite3.connect(db_path)
         self.create_table()
+        self.create_summary_table()
 
     def create_table(self):
         cursor = self.conn.cursor()
@@ -146,6 +147,17 @@ class ConversationMemory:
         ''')
         self.conn.commit()
 
+    def create_summary_table(self):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS conversation_summaries (
+                conversation_id TEXT PRIMARY KEY,
+                user_id TEXT,
+                summary TEXT
+            )
+        ''')
+        self.conn.commit()
+
     def add_message(self, conversation_id, user_id, agent_name, role, content):
         cursor = self.conn.cursor()
         cursor.execute('''
@@ -159,6 +171,14 @@ class ConversationMemory:
             INSERT INTO conversation_messages (conversation_id, user_id, message_number, timestamp, agent_name, role, content)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (conversation_id, user_id, new_message_number, datetime.now(), agent_name, role, content))
+        self.conn.commit()
+
+    def add_summary(self, conversation_id, user_id, summary):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO conversation_summaries (conversation_id, user_id, summary)
+            VALUES (?, ?, ?)
+        ''', (conversation_id, user_id, summary))
         self.conn.commit()
 
     def get_conversation_history(self, conversation_id, user_id):
@@ -183,21 +203,43 @@ class ConversationMemory:
         last_message = cursor.fetchone()
         return last_message[0] if last_message else "No messages in this conversation."
 
+    def get_summary(self, conversation_id):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT summary FROM conversation_summaries
+            WHERE conversation_id = ?
+        ''', (conversation_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
     def get_all_conversations(self, user_id):
         cursor = self.conn.cursor()
         cursor.execute('''
-            SELECT DISTINCT conversation_id, 
-                   (SELECT content FROM conversation_messages cm 
-                    WHERE cm.conversation_id = c.conversation_id 
-                    ORDER BY message_number DESC LIMIT 1) as summary
-            FROM conversation_messages c
-            WHERE user_id = ?
+            SELECT c.conversation_id, COALESCE(s.summary, 'No summary available') as summary
+            FROM (SELECT DISTINCT conversation_id FROM conversation_messages WHERE user_id = ?) c
+            LEFT JOIN conversation_summaries s ON c.conversation_id = s.conversation_id
         ''', (user_id,))
         conversations = [{'id': row[0], 'summary': row[1]} for row in cursor.fetchall()]
         return conversations
 
 # Initialize the conversation memory
 conversation_memory = ConversationMemory()
+
+@observe(as_type="generation")
+def generate_summary(instructions):
+    llm = ChatGroq(
+        model='llama-3.1-70b-versatile',
+        temperature=0,
+        max_tokens=None,
+        timeout=None,
+        max_retries=2
+    )
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are a summarization assistant. Generate a one-sentence summary of the given conversation instructions."),
+        ("human", "{instructions}")
+    ])
+    response = llm.invoke(prompt.format_messages(instructions=instructions))
+    return response.content
 
 @observe()
 async def agent_conversation(instructions, websocket, conversation_id, user_id):
@@ -276,6 +318,11 @@ async def agent_conversation(instructions, websocket, conversation_id, user_id):
             'plot_data': plot_data
         })
 
+    # Generate and store summary after the first message
+    if len(history) == 0:
+        summary = generate_summary(instructions)
+        conversation_memory.add_summary(conversation_id, user_id, summary)
+
     return generated_code, execution_result
 
 @app.websocket("/ws")
@@ -311,6 +358,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({
                     'type': 'all_conversations',
                     'conversations': conversations
+                })
+            elif data['type'] == 'new_conversation':
+                conversation_id = data['conversation_id']
+                await websocket.send_json({
+                    'type': 'conversation_id',
+                    'conversation_id': conversation_id
                 })
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")

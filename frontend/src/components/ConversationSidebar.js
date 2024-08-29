@@ -1,10 +1,11 @@
 import React from 'react';
 import './ConversationSidebar.css';
 
-function ConversationSidebar({ conversations, onSelectConversation, currentConversationId }) {
+function ConversationSidebar({ conversations, onSelectConversation, currentConversationId, onNewConversation }) {
   return (
     <div className="conversation-sidebar">
       <h2>Conversations</h2>
+      <button onClick={onNewConversation} className="new-conversation-btn">New Conversation</button>
       <ul>
         {conversations.map((conv) => (
           <li 

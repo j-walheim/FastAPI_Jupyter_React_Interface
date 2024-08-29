@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import CodeEditor from './components/CodeEditor';
 import OutputDisplay from './components/OutputDisplay';
 import ConversationSidebar from './components/ConversationSidebar';
+import { v4 as uuidv4 } from 'uuid';
 import './App.css';
 
 function App() {
@@ -11,6 +12,20 @@ function App() {
   const [conversationId, setConversationId] = useState('');
   const [conversations, setConversations] = useState([]);
   const ws = useRef(null);
+
+  const handleNewConversation = () => {
+    const newConversationId = uuidv4();
+    setConversationId(newConversationId);
+    setInstructions('');
+    setOutput('');
+    setGeneratedCode('');
+    if (ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ 
+        type: 'new_conversation', 
+        conversation_id: newConversationId
+      }));
+    }
+  };
 
   useEffect(() => {
     ws.current = new WebSocket('ws://localhost:8000/ws');
@@ -71,6 +86,7 @@ function App() {
         conversations={conversations}
         onSelectConversation={handleLoadConversation}
         currentConversationId={conversationId}
+        onNewConversation={handleNewConversation}
       />
       <div className="main-content">
         <h1>FastAPI Jupyter React Interface</h1>

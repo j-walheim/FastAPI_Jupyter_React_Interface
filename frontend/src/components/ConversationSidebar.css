@@ -43,3 +43,19 @@
     font-size: 0.9em;
     color: #666;
   }
+  
+.new-conversation-btn {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.new-conversation-btn:hover {
+  background-color: #45a049;
+}
