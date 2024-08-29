@@ -114,7 +114,7 @@ function App() {
         onNewConversation={handleNewConversation}
       />
       <div className="main-content">
-        <h1>FastAPI Jupyter React Interface</h1>
+        <h1>React - FastAPI - Coding Agent</h1>
         <p>Current Conversation ID: {conversationId}</p>
         <div className="chat-history">
           {chatHistory.length > 0 ? (
