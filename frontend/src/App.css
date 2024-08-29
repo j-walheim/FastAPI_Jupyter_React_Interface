@@ -106,22 +106,24 @@ pre {
 }
 
 .chat-history {
-  margin-bottom: 20px;
-  max-height: 500px;
+  max-height: 400px;
   overflow-y: auto;
+  border: 1px solid #ccc;
+  padding: 10px;
+  margin-bottom: 20px;
 }
 
 .chat-message {
   margin-bottom: 10px;
-  padding: 10px;
+  padding: 5px;
   border-radius: 5px;
 }
 
-.chat-message.user {
+.chat-message.human {
   background-color: #e6f2ff;
 }
 
-.chat-message.ai {
+.chat-message.assistant {
   background-color: #f0f0f0;
 }
 

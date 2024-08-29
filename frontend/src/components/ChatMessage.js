@@ -18,7 +18,10 @@ function ChatMessage({ message, isLastMessage }) {
         )}
       </div>
       <div className="message-content">
-        {isExpanded ? message.content : (message.content.substring(0, 50) + '...')}
+        {message.content}
+        {message.collapsible && isExpanded && message.details && (
+          <pre className="message-details">{message.details}</pre>
+        )}
       </div>
     </div>
   );

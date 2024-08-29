@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import CodeEditor from './components/CodeEditor';
-import OutputDisplay from './components/OutputDisplay';
 import ConversationSidebar from './components/ConversationSidebar';
 import { v4 as uuidv4 } from 'uuid';
 import './App.css';
@@ -37,15 +36,21 @@ function App() {
     };
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      console.log('Received message:', data);  // Add this line for debugging
       if (data.type === 'chat_message') {
-        setChatHistory(prevHistory => [...prevHistory, data.message]);
+        setChatHistory(prevHistory => {
+          const newHistory = [...prevHistory, data.message];
+          console.log('Updated chat history:', newHistory);  // Add this line for debugging
+          return newHistory;
+        });
       } else if (data.type === 'result') {
         setOutput(data.output);
         setGeneratedCode(data.generated_code);
-        setChatHistory(prevHistory => [
-          ...prevHistory,
-          { role: 'assistant', content: data.output, collapsible: true }
-        ]);
+        setChatHistory(prevHistory => {
+          const newHistory = [...prevHistory, { role: 'assistant', content: data.output, collapsible: true }];
+          console.log('Updated chat history:', newHistory);  // Add this line for debugging
+          return newHistory;
+        });
       } else if (data.type === 'conversation_id') {
         setConversationId(data.conversation_id);
         setConversations(prevConversations => [
@@ -63,6 +68,7 @@ function App() {
       } else if (data.type === 'all_conversations') {
         setConversations(data.conversations);
       } else if (data.type === 'loaded_conversation') {
+        console.log('Loaded conversation:', data.messages);  // Add this line for debugging
         setChatHistory(data.messages);
       }
     };
@@ -88,6 +94,7 @@ function App() {
   };
 
   const handleLoadConversation = (id) => {
+    console.log('Loading conversation:', id);  // Add this line for debugging
     setConversationId(id);
     setChatHistory([]);  // Clear the current chat history
     if (ws.current.readyState === WebSocket.OPEN) {
@@ -110,13 +117,17 @@ function App() {
         <h1>FastAPI Jupyter React Interface</h1>
         <p>Current Conversation ID: {conversationId}</p>
         <div className="chat-history">
-          {chatHistory.map((msg, index) => (
-            <ChatMessage
-              key={index}
-              message={msg}
-              isLastMessage={index === chatHistory.length - 1}
-            />
-          ))}
+          {chatHistory.length > 0 ? (
+            chatHistory.map((msg, index) => (
+              <ChatMessage
+                key={index}
+                message={msg}
+                isLastMessage={index === chatHistory.length - 1}
+              />
+            ))
+          ) : (
+            <p>No messages in this conversation yet.</p>
+          )}
         </div>
         <form onSubmit={handleSubmit}>
           <CodeEditor
@@ -126,11 +137,6 @@ function App() {
           />
           <button type="submit">Generate and Execute Code</button>
         </form>
-        <div>
-          <h2>Generated Code:</h2>
-          <pre>{generatedCode}</pre>
-        </div>
-        <OutputDisplay output={output} />
       </div>
     </div>
   );
