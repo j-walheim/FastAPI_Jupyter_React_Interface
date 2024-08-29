@@ -332,6 +332,22 @@ async def agent_conversation(instructions, websocket, conversation_id, user_id):
 
     return generated_code, execution_result
 
+async def load_conversation(websocket, conversation_id, user_id):
+    history = conversation_memory.get_conversation_history(conversation_id, user_id)
+    messages = [
+        {
+            'role': 'human' if msg[2] == 'human' else 'assistant',
+            'content': msg[3],
+            'collapsible': msg[2] != 'human'
+        }
+        for msg in history
+    ]
+    await websocket.send_json({
+        'type': 'loaded_conversation',
+        'conversation_id': conversation_id,
+        'messages': messages
+    })
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -354,12 +370,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await agent_conversation(instructions, websocket, conversation_id, user_id)
             elif data['type'] == 'load_conversation':
                 conversation_id = data['conversation_id']
-                history = conversation_memory.get_conversation_history(conversation_id, user_id)
-                await websocket.send_json({
-                    'type': 'conversation_summary',
-                    'conversation_id': conversation_id,
-                    'summary': history[-1] if history else "No messages in this conversation."
-                })
+                await load_conversation(websocket, conversation_id, user_id)
             elif data['type'] == 'get_conversations':
                 conversations = conversation_memory.get_all_conversations(user_id)
                 await websocket.send_json({

@@ -94,7 +94,7 @@ function App() {
   };
 
   const handleLoadConversation = (id) => {
-    console.log('Loading conversation:', id);  // Add this line for debugging
+    console.log('Loading conversation:', id);
     setConversationId(id);
     setChatHistory([]);  // Clear the current chat history
     if (ws.current.readyState === WebSocket.OPEN) {
