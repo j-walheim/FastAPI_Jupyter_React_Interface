@@ -22,6 +22,7 @@ from langchain.prompts import ChatPromptTemplate
 
 from langfuse.decorators import observe, langfuse_context
 
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ app.add_middleware(
 
 # Load environment variables
 load_dotenv()
+
+verbose = os.environ.get('VERBOSE', 'false').lower() == 'true'
+
 
 # Create a virtual environment
 venv_path = Path("venv")
@@ -54,12 +58,17 @@ class CodingAgent:
 
     @observe(as_type="generation")
     def generate_code(self, instructions):
+        if verbose:
+            print(f"CodingAgent: Generating code for instructions: {instructions}")
+        
         prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a Python coding assistant. Generate executable Python code based on the given instructions. Provide shell code if you need to install packages. Use shell``` and python``` blocks, respectively, for shell commands and python code. Only provide the code blocks, no other text."),
             ("human", instructions)
         ])
 
         response = self.llm.invoke(prompt.format_messages(instructions=instructions))
+        if verbose:
+            print(f"CodingAgent: Generated code:\n{response.content}")
         return response.content
 
     def extract_code_blocks(self, content, block_type):
@@ -70,10 +79,13 @@ class CodingAgent:
 
 class ExecutionAgent:
     def __init__(self):
-        self.max_attempts = 5
+        self.max_attempts = 2
 
     @observe()
     def execute_code(self, generated_content):
+        if verbose:
+            print(f"ExecutionAgent: Executing generated code")
+        
         shell_commands = coding_agent.extract_code_blocks(generated_content, 'shell')
         python_code = coding_agent.extract_code_blocks(generated_content, 'python')
 
@@ -92,10 +104,11 @@ class ExecutionAgent:
         # Execute Python code
         result = run_in_venv(f"python -c '{python_code}'")
         
-        if result.returncode == 0:
-            return True, result.stdout
-        else:
-            return False, f"Execution failed. Error: {result.stderr}"
+        if verbose:
+            print(f"ExecutionAgent: Execution result: {'Success' if success else 'Failure'}")
+            print(f"ExecutionAgent: Output: {result.stdout if success else result.stderr}")
+        
+        return success, result.stdout if success else f"Execution failed. Error: {result.stderr}"
 
 # Initialize the agents
 coding_agent = CodingAgent()
@@ -103,14 +116,20 @@ execution_agent = ExecutionAgent()
 
 @observe()
 async def agent_conversation(instructions, websocket):
+    if verbose:
+        print(f"Starting agent conversation for instructions: {instructions}")
+    
     execution_id = str(uuid.uuid4())
     logger.info(f"Starting agent conversation for instructions: {instructions}")
 
     for attempt in range(execution_agent.max_attempts):
+        if verbose:
+            print(f"Attempt {attempt + 1}/{execution_agent.max_attempts}")
+        
         # Coding agent generates code
         generated_code = coding_agent.generate_code(instructions)
         
-        # Send generated code to frontend
+        # Send generated code to frontend - intermediate result not used for now
         await websocket.send_json({
             'type': 'code_generated',
             'execution_id': execution_id,
@@ -120,7 +139,7 @@ async def agent_conversation(instructions, websocket):
         # Execution agent executes the code
         success, execution_result = execution_agent.execute_code(generated_code)
         
-        # Send execution result to frontend
+        # Send execution result to frontend - intermediate result not used for now
         await websocket.send_json({
             'type': 'execution_result',
             'execution_id': execution_id,
@@ -129,13 +148,17 @@ async def agent_conversation(instructions, websocket):
         })
 
         if success:
+            if verbose:
+                print("Execution successful")
             break
         else:
+            if verbose:
+                print(f"Execution failed. Retrying with updated instructions.")
             instructions = f"{instructions}\n\nExecution failed. Error: {execution_result}\nPlease correct the code and try again."
 
     # Send final results
     await websocket.send_json({
-        'type': 'final_result',
+        'type': 'result',
         'execution_id': execution_id,
         'generated_code': generated_code,
         'output': execution_result
