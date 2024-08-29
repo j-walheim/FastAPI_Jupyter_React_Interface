@@ -90,6 +90,8 @@ class CodingAgent:
 class ExecutionAgent:
     def __init__(self):
         self.max_attempts = 5
+        self.coding_agent_dir = Path("coding_agent")
+        self.coding_agent_dir.mkdir(exist_ok=True)
 
     @observe()
     def execute_code(self, generated_content):
@@ -106,8 +108,12 @@ class ExecutionAgent:
                 if "Successfully installed" not in install_result:
                     return False, f"Package installation failed: {install_result}"
 
-        # Execute Python code
-        result = run_in_venv(f"python -c '{python_code}'")
+        # Save Python code to a file
+        script_file = self.coding_agent_dir / f"script_{uuid.uuid4()}.py"
+        script_file.write_text(python_code)
+
+        # Execute Python code from the file
+        result = run_in_venv(str(script_file))
         success = result.returncode == 0
         
         print_verbose(f"ExecutionAgent: Execution result: {'Success' if success else 'Failure'}")
@@ -256,13 +262,6 @@ async def websocket_endpoint(websocket: WebSocket):
     conversation_id = str(uuid.uuid4())
     user_id = "test_user"
     
-    # Send the initial plot
-    sample_plot = create_sample_plot()
-    await websocket.send_json({
-        'type': 'plotly',
-        'execution_id': str(uuid.uuid4()),
-        'plot_data': sample_plot
-    })
     
     try:
         while True:
@@ -277,9 +276,9 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(traceback.format_exc())
 
 # Ensure these functions are defined
-def run_in_venv(cmd):
+def run_in_venv(script_path):
     venv_python = os.path.join(venv_path, 'bin', 'python')
-    return subprocess.run(f"{venv_python} -c '{cmd}'", capture_output=True, text=True, shell=True)
+    return subprocess.run([venv_python, script_path], capture_output=True, text=True)
 
 def install_packages(packages):
     if isinstance(packages, str):
@@ -291,12 +290,7 @@ def install_packages(packages):
         results.append(f"Installation result for {package}: {result.stdout}\n{result.stderr}")
     return "\n".join(results)
 
-def create_sample_plot():
-    x = [1, 2, 3, 4, 5]
-    y = [1, 4, 2, 3, 5]
-    fig = go.Figure(data=go.Scatter(x=x, y=y, mode='lines'))
-    fig.update_layout(title='Sample Line Plot')
-    return pio.to_json(fig)
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -165,3 +165,4 @@ update.sh
 coding/*
 .env
 conversations.db
+coding_agent/*
