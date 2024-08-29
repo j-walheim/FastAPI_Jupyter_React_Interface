@@ -19,6 +19,9 @@ import venv
 import openai
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
+import sqlite3
+from datetime import datetime
+import uuid
 
 from langfuse.decorators import observe, langfuse_context
 
@@ -114,13 +117,72 @@ class ExecutionAgent:
 coding_agent = CodingAgent()
 execution_agent = ExecutionAgent()
 
+class ConversationMemory:
+    def __init__(self, db_path='conversations.db'):
+        self.conn = sqlite3.connect(db_path)
+        self.create_table()
+
+    def create_table(self):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT,
+                user_id TEXT,
+                message_number INTEGER,
+                timestamp DATETIME,
+                agent_name TEXT,
+                role TEXT,
+                content TEXT
+            )
+        ''')
+        self.conn.commit()
+
+    def add_message(self, conversation_id, user_id, agent_name, role, content):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT MAX(message_number) FROM conversation_messages
+            WHERE conversation_id = ? AND user_id = ?
+        ''', (conversation_id, user_id))
+        last_message_number = cursor.fetchone()[0] or 0
+        new_message_number = last_message_number + 1
+
+        cursor.execute('''
+            INSERT INTO conversation_messages (conversation_id, user_id, message_number, timestamp, agent_name, role, content)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (conversation_id, user_id, new_message_number, datetime.now(), agent_name, role, content))
+        self.conn.commit()
+
+    def get_conversation_history(self, conversation_id, user_id):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT message_number, agent_name, role, content
+            FROM conversation_messages
+            WHERE conversation_id = ? AND user_id = ?
+            ORDER BY message_number
+        ''', (conversation_id, user_id))
+        return cursor.fetchall()
+
+# Initialize the conversation memory
+conversation_memory = ConversationMemory()
+
 @observe()
-async def agent_conversation(instructions, websocket):
+async def agent_conversation(instructions, websocket, conversation_id, user_id):
     if verbose:
         print(f"Starting agent conversation for instructions: {instructions}")
     
     execution_id = str(uuid.uuid4())
     logger.info(f"Starting agent conversation for instructions: {instructions}")
+
+    # Add user message to conversation memory
+    conversation_memory.add_message(conversation_id, user_id, "User", "human", instructions)
+
+    # Retrieve conversation history
+    history = conversation_memory.get_conversation_history(conversation_id, user_id)
+    context = "\n".join([f"[{h[0]}] {h[1]} ({h[2]}): {h[3]}" for h in history])
+    
+    if context:
+        instructions = f"Conversation history:\n{context}\n\nNew instructions: {instructions}"
 
     for attempt in range(execution_agent.max_attempts):
         if verbose:
@@ -128,6 +190,9 @@ async def agent_conversation(instructions, websocket):
         
         # Coding agent generates code
         generated_code = coding_agent.generate_code(instructions)
+        
+        # Add coding agent message to conversation memory
+        conversation_memory.add_message(conversation_id, user_id, "CodingAgent", "assistant", generated_code)
         
         # Send generated code to frontend - intermediate result not used for now
         await websocket.send_json({
@@ -138,6 +203,9 @@ async def agent_conversation(instructions, websocket):
 
         # Execution agent executes the code
         success, execution_result = execution_agent.execute_code(generated_code)
+        
+        # Add execution agent message to conversation memory
+        conversation_memory.add_message(conversation_id, user_id, "ExecutionAgent", "system", execution_result)
         
         # Send execution result to frontend - intermediate result not used for now
         await websocket.send_json({
@@ -180,6 +248,10 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection established")
     
+    # Generate a random conversation_id using UUID
+    conversation_id = str(uuid.uuid4())
+    user_id = "test_user"
+    
     # Send the initial plot
     sample_plot = create_sample_plot()
     await websocket.send_json({
@@ -193,7 +265,7 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_json()
             if data['type'] == 'execute':
                 instructions = data['instructions']
-                await agent_conversation(instructions, websocket)
+                await agent_conversation(instructions, websocket, conversation_id, user_id)
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:
