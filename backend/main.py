@@ -20,6 +20,8 @@ import openai
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
 
+from langfuse.decorators import observe, langfuse_context
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -36,19 +38,19 @@ app.add_middleware(
 # Load environment variables
 load_dotenv()
 
-# Set up OpenAI client
-client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-
 # Create a virtual environment
 venv_path = Path("venv")
 venv.create(venv_path, with_pip=True)
 
+
+@observe()
 # Function to run commands in the virtual environment
 def run_in_venv(cmd):
-    activate_this = os.path.join(venv_path, 'bin', 'activate_this.py')
+    activate_this = os.path.join(venv_path, 'bin', 'activate')
     exec(open(activate_this).read(), {'__file__': activate_this})
     return subprocess.run(cmd, capture_output=True, text=True, shell=True)
 
+@observe()
 # Function to install packages in the virtual environment
 def install_packages(packages):
     if isinstance(packages, str):
@@ -62,24 +64,31 @@ class CodingAgent:
     def __init__(self):
         self.max_attempts = 5
         self.llm = ChatGroq(
-            model='llama3-groq-70b-8192-tool-use-preview',
+            model='llama-3.1-70b-versatile',
             temperature=0,
             max_tokens=None,
             timeout=None,
             max_retries=2
         )
 
+
+    @observe(as_type="generation")
+    def generate_code(self, instructions):
+        # Generate code using Groq
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a Python coding assistant. Generate executable Python code based on the given instructions. Provide shell code if you need to install packages. Use shell``` and python``` blocks, respectively, for shell commands and python code. Only provide the code blocks, no other text."),
+            ("human", instructions)
+        ])
+
+        response = await self.llm.ainvoke(prompt.format_messages(instructions=instructions))
+        return response.content
+
+    @observe()
     async def generate_and_execute_code(self, instructions):
         for attempt in range(self.max_attempts):
             try:
-                # Generate code using Groq
-                prompt = ChatPromptTemplate.from_messages([
-                    ("system", "You are a Python coding assistant. Generate executable Python code based on the given instructions. Provide shell code if you need to install packages. Use shell``` and python``` blocks, respectively, for shell commands and python code. Only provide the code blocks, no other text."),
-                    ("human", instructions)
-                ])
 
-                response = await self.llm.ainvoke(prompt.format_messages(instructions=instructions))
-                generated_content = response.content
+                generated_content = self.generate_code(instructions)
 
                 # Extract shell and Python commands
                 shell_commands = self.extract_code_blocks(generated_content, 'shell')
