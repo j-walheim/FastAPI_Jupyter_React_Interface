@@ -33,13 +33,27 @@ app.add_middleware(
 load_dotenv()
 
 # Set up the coding agent
-config_list = [
+config_list_groq = [
     {
         "model": "llama-3.1-70b-versatile",
         "api_key": os.environ.get("GROQ_API_KEY"),
         "api_type": "groq",
     }
 ]
+
+# Set up the coding agent
+config_list_openai = [
+    {
+        "model": "gpt-4o-mini",
+        "api_key": os.environ.get("OPENAI_API_KEY"),
+    }
+]
+config_list_gemini = {
+        "model": "gemini-pro",
+        "api_key":  os.environ.get("GEMINI_API_KEY"),
+        "api_type": "google"
+    },
+
 
 workdir = Path("coding")
 workdir.mkdir(exist_ok=True)
@@ -79,9 +93,9 @@ user_proxy_agent = UserProxyAgent(
 )
 
 assistant_agent = AssistantAgent(
-    name="Groq Assistant",
+    name="LLM Assistant",
 #    system_message=system_message,
-    llm_config={"config_list": config_list},
+    llm_config={"config_list": config_list_openai},
 )
 
 def create_sample_plot():
@@ -119,10 +133,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
                 
                 # Extract the generated code and its output
-                generated_code = chat_result.chat_history[-3]['content']  # Assuming the last message is "FINISH"
-                execution_result = chat_result.chat_history[-2]['content']
-                status = chat_result.chat_history[-1]['content']
-
+                generated_code = chat_result.chat_history[-3]['content'] if len(chat_result.chat_history) >= 3 else ""
+                execution_result = chat_result.chat_history[-2]['content'] if len(chat_result.chat_history) >= 2 else ""
+                status = chat_result.chat_history[-1]['content'] if len(chat_result.chat_history) >= 1 else ""
 
                 # Send the results back to the frontend
                 await websocket.send_json({
@@ -133,8 +146,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 })
                 
                 # Check if the output contains a Plotly figure
-                if 'application/vnd.plotly.v1+json' in execution_result:
-                    plot_data = execution_result['application/vnd.plotly.v1+json']
+                if execution_result.startswith('{"data":[{"'):
+                    plot_data = execution_result[execution_result.index('{"data":[{"'):]
                     await websocket.send_json({
                         'type': 'plotly',
                         'execution_id': execution_id,
