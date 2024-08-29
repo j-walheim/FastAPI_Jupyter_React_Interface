@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import PlotlyComponent from './components/PlotlyComponent';
 import CodeEditor from './components/CodeEditor';
 import OutputDisplay from './components/OutputDisplay';
 
@@ -7,7 +6,6 @@ function App() {
   const [instructions, setInstructions] = useState('create a survival plot for IO vs. Chemo and save it as survival.png');
   const [output, setOutput] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
-  const [plotData, setPlotData] = useState(null);
   const ws = useRef(null);
 
   useEffect(() => {
@@ -18,9 +16,10 @@ function App() {
       if (data.type === 'result') {
         setOutput(data.output);
         setGeneratedCode(data.generated_code);
-      } else if (data.type === 'plotly') {
-        setPlotData(data.plot_data);
-      }
+      } 
+      // else if (data.type === 'plotly') 
+
+      // }
     };
     return () => {
       ws.current.close();
@@ -50,10 +49,6 @@ function App() {
         <pre>{generatedCode}</pre>
       </div>
       <OutputDisplay output={output} />
-      <div>
-        <h2>Plot:</h2>
-        {plotData && <PlotlyComponent plotData={plotData} />}
-      </div>
     </div>
   );
 }
