@@ -15,6 +15,10 @@ from autogen import AssistantAgent, UserProxyAgent
 from autogen.coding import LocalCommandLineCodeExecutor
 from dotenv import load_dotenv
 import subprocess
+import venv
+import openai
+from langchain_groq import ChatGroq
+from langchain.prompts import ChatPromptTemplate
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,32 +36,96 @@ app.add_middleware(
 # Load environment variables
 load_dotenv()
 
-# Set up the coding agent
-config_list_groq = [
-    {
-        "model": "llama-3.1-70b-versatile",
-        "api_key": os.environ.get("GROQ_API_KEY"),
-        "api_type": "groq",
-    }
-]
+# Set up OpenAI client
+client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# Set up the coding agent
-config_list_openai = [
-    {
-        "model": "gpt-4o-mini",
-        "api_key": os.environ.get("OPENAI_API_KEY"),
-    }
-]
-config_list_gemini = {
-        "model": "gemini-pro",
-        "api_key":  os.environ.get("GEMINI_API_KEY"),
-        "api_type": "google"
-    },
+# Create a virtual environment
+venv_path = Path("venv")
+venv.create(venv_path, with_pip=True)
+
+# Function to run commands in the virtual environment
+def run_in_venv(cmd):
+    activate_this = os.path.join(venv_path, 'bin', 'activate_this.py')
+    exec(open(activate_this).read(), {'__file__': activate_this})
+    return subprocess.run(cmd, capture_output=True, text=True, shell=True)
+
+# Function to install packages in the virtual environment
+def install_packages(packages):
+    if isinstance(packages, str):
+        packages = [packages]
+    for package in packages:
+        result = run_in_venv(f"pip install {package}")
+    return f"Installation result: {result.stdout}\n{result.stderr}"
+
+# Custom coding agent
+class CodingAgent:
+    def __init__(self):
+        self.max_attempts = 5
+        self.llm = ChatGroq(
+            model='llama3-groq-70b-8192-tool-use-preview',
+            temperature=0,
+            max_tokens=None,
+            timeout=None,
+            max_retries=2
+        )
+
+    async def generate_and_execute_code(self, instructions):
+        for attempt in range(self.max_attempts):
+            try:
+                # Generate code using Groq
+                prompt = ChatPromptTemplate.from_messages([
+                    ("system", "You are a Python coding assistant. Generate executable Python code based on the given instructions. Provide shell code if you need to install packages. Use shell``` and python``` blocks, respectively, for shell commands and python code. Only provide the code blocks, no other text."),
+                    ("human", instructions)
+                ])
+
+                response = await self.llm.ainvoke(prompt.format_messages(instructions=instructions))
+                generated_content = response.content
+
+                # Extract shell and Python commands
+                shell_commands = self.extract_code_blocks(generated_content, 'shell')
+                python_code = self.extract_code_blocks(generated_content, 'python')
+
+                # Execute shell commands (package installation)
+                installation_errors = []
+                for cmd in shell_commands.split('\n'):
+                    if cmd.startswith('pip install'):
+                        packages = cmd.split('pip install ')[1].split()
+                        install_result = install_packages(packages)
+                        if "Successfully installed" not in install_result:
+                            installation_errors.append(f"Failed to install {' '.join(packages)}. Error: {install_result}")
+
+                if installation_errors:
+                    error_message = "Package installation failed:\n" + "\n".join(installation_errors)
+                    continue  # Retry with the error message
+
+                # Execute Python code
+                result = run_in_venv(f"python -c '{python_code}'")
+                
+                if result.returncode == 0:
+                    return generated_content, result.stdout  # Return the output on success
+                else:
+                    # If execution fails, send the error back to Groq for correction
+                    error_message = f"Execution failed. Error: {result.stderr}\nPlease correct the code and try again."
+                    continue
+            except Exception as e:
+                error_message = f"An error occurred: {str(e)}"
+                continue
+
+        # If all attempts fail, return the error message
+        return generated_content, f"Failed after {self.max_attempts} attempts. {error_message} Please provide additional information or clarify your instructions."
+
+    def extract_code_blocks(self, content, block_type):
+        import re
+        pattern = rf"```{block_type}(.*?)```"
+        blocks = re.findall(pattern, content, re.DOTALL)
+        return '\n'.join(block.strip() for block in blocks)
+
+# Initialize the coding agent
+coding_agent = CodingAgent()
 
 
 workdir = Path("coding")
 workdir.mkdir(exist_ok=True)
-
 
 
 def install_packages(packages):
@@ -79,24 +147,6 @@ If the result indicates there is an error, fix the error and output the code aga
 When you find an answer, verify the answer carefully. Include verifiable evidence in your response if possible."""
 
 
-
-code_executor = LocalCommandLineCodeExecutor(work_dir=workdir)
-
-user_proxy_agent = UserProxyAgent(
-    name="User",
-    code_execution_config={"executor": code_executor},
-    human_input_mode="NEVER",
-    max_consecutive_auto_reply=10,
-    is_termination_msg=lambda x: x.get("content", "").rstrip().endswith("TERMINATE"),
-#    is_termination_msg=lambda msg: "FINISH" in msg.get("content"),
-    function_map={"install_packages": install_packages}
-)
-
-assistant_agent = AssistantAgent(
-    name="LLM Assistant",
-#    system_message=system_message,
-    llm_config={"config_list": config_list_openai},
-)
 
 def create_sample_plot():
     x = [1, 2, 3, 4, 5]
@@ -126,17 +176,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 execution_id = str(uuid.uuid4())
                 logger.info(f"Received instructions: {instructions}")
                 
-                # Use the coding agent to generate and execute code
-                chat_result = user_proxy_agent.initiate_chat(
-                    assistant_agent,
-                    message=instructions,
-                )
+                # Use the custom coding agent to generate and execute code
+                generated_code, execution_result = await coding_agent.generate_and_execute_code(instructions)
                 
-                # Extract the generated code and its output
-                generated_code = chat_result.chat_history[-3]['content'] if len(chat_result.chat_history) >= 3 else ""
-                execution_result = chat_result.chat_history[-2]['content'] if len(chat_result.chat_history) >= 2 else ""
-                status = chat_result.chat_history[-1]['content'] if len(chat_result.chat_history) >= 1 else ""
-
                 # Send the results back to the frontend
                 await websocket.send_json({
                     'type': 'result',
