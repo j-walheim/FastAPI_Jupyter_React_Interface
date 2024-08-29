@@ -22,6 +22,8 @@ from langchain.prompts import ChatPromptTemplate
 import sqlite3
 from datetime import datetime
 import uuid
+import colorama
+from colorama import Fore, Style
 
 from langfuse.decorators import observe, langfuse_context
 
@@ -44,6 +46,12 @@ load_dotenv()
 
 verbose = os.environ.get('VERBOSE', 'false').lower() == 'true'
 
+# Initialize colorama
+colorama.init(autoreset=True)
+
+def print_verbose(message):
+    if verbose:
+        print(f"{Fore.CYAN}{message}{Style.RESET_ALL}")
 
 # Create a virtual environment
 venv_path = Path("venv")
@@ -61,17 +69,16 @@ class CodingAgent:
 
     @observe(as_type="generation")
     def generate_code(self, instructions):
-        if verbose:
-            print(f"CodingAgent: Generating code for instructions: {instructions}")
+        print_verbose(f"CodingAgent: Generating code for instructions: {instructions}")
         
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a Python coding assistant. Generate executable Python code based on the given instructions. Provide shell code if you need to install packages. Use shell``` and python``` blocks, respectively, for shell commands and python code. Only provide the code blocks, no other text."),
-            ("human", instructions)
+            ("system", "You are a Python coding assistant. Generate executable Python code based on the given instructions and if applicable, error messages. If additional packages need to be installed, provide shell code. Use shell``` and python``` blocks, respectively, for shell commands and python code. Only provide the code blocks, no other text."),
+            ("human", "{instructions}")
         ])
 
         response = self.llm.invoke(prompt.format_messages(instructions=instructions))
         if verbose:
-            print(f"CodingAgent: Generated code:\n{response.content}")
+            print_verbose(f"CodingAgent: Generated code:\n{response.content}")
         return response.content
 
     def extract_code_blocks(self, content, block_type):
@@ -82,34 +89,29 @@ class CodingAgent:
 
 class ExecutionAgent:
     def __init__(self):
-        self.max_attempts = 2
+        self.max_attempts = 5
 
     @observe()
     def execute_code(self, generated_content):
-        if verbose:
-            print(f"ExecutionAgent: Executing generated code")
+        print_verbose(f"ExecutionAgent: Executing generated code")
         
         shell_commands = coding_agent.extract_code_blocks(generated_content, 'shell')
         python_code = coding_agent.extract_code_blocks(generated_content, 'python')
 
         # Execute shell commands (package installation)
-        installation_errors = []
         for cmd in shell_commands.split('\n'):
             if cmd.startswith('pip install'):
                 packages = cmd.split('pip install ')[1].split()
                 install_result = install_packages(packages)
                 if "Successfully installed" not in install_result:
-                    installation_errors.append(f"Failed to install {' '.join(packages)}. Error: {install_result}")
-
-        if installation_errors:
-            return False, "Package installation failed:\n" + "\n".join(installation_errors)
+                    return False, f"Package installation failed: {install_result}"
 
         # Execute Python code
         result = run_in_venv(f"python -c '{python_code}'")
+        success = result.returncode == 0
         
-        if verbose:
-            print(f"ExecutionAgent: Execution result: {'Success' if success else 'Failure'}")
-            print(f"ExecutionAgent: Output: {result.stdout if success else result.stderr}")
+        print_verbose(f"ExecutionAgent: Execution result: {'Success' if success else 'Failure'}")
+        print_verbose(f"ExecutionAgent: Output: {result.stdout if success else result.stderr}")
         
         return success, result.stdout if success else f"Execution failed. Error: {result.stderr}"
 
@@ -168,8 +170,7 @@ conversation_memory = ConversationMemory()
 
 @observe()
 async def agent_conversation(instructions, websocket, conversation_id, user_id):
-    if verbose:
-        print(f"Starting agent conversation for instructions: {instructions}")
+    print_verbose(f"Starting agent conversation for instructions: {instructions}")
     
     execution_id = str(uuid.uuid4())
     logger.info(f"Starting agent conversation for instructions: {instructions}")
@@ -185,8 +186,7 @@ async def agent_conversation(instructions, websocket, conversation_id, user_id):
         instructions = f"Conversation history:\n{context}\n\nNew instructions: {instructions}"
 
     for attempt in range(execution_agent.max_attempts):
-        if verbose:
-            print(f"Attempt {attempt + 1}/{execution_agent.max_attempts}")
+        print_verbose(f"Attempt {attempt + 1}/{execution_agent.max_attempts}")
         
         # Coding agent generates code
         generated_code = coding_agent.generate_code(instructions)
@@ -221,7 +221,11 @@ async def agent_conversation(instructions, websocket, conversation_id, user_id):
             break
         else:
             if verbose:
-                print(f"Execution failed. Retrying with updated instructions.")
+                if attempt < execution_agent.max_attempts - 1:
+                    print(f"Execution failed. Retrying with updated instructions.")
+                else:
+                    print(f"Execution failed. Reached final iteration.")
+                    
             instructions = f"{instructions}\n\nExecution failed. Error: {execution_result}\nPlease correct the code and try again."
 
     # Send final results
