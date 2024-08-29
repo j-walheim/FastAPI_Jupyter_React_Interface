@@ -1,0 +1,45 @@
+.conversation-sidebar {
+    width: 250px;
+    height: 100vh;
+    overflow-y: auto;
+    background-color: #f0f0f0;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  
+  .conversation-sidebar h2 {
+    margin-top: 0;
+  }
+  
+  .conversation-sidebar ul {
+    list-style-type: none;
+    padding: 0;
+  }
+  
+  .conversation-sidebar li {
+    cursor: pointer;
+    padding: 10px;
+    margin-bottom: 10px;
+    background-color: #fff;
+    border-radius: 5px;
+    transition: background-color 0.3s;
+  }
+  
+  .conversation-sidebar li:hover {
+    background-color: #e0e0e0;
+  }
+  
+  .conversation-sidebar li.active {
+    background-color: #d0d0d0;
+  }
+  
+  .conversation-id {
+    font-weight: bold;
+    display: block;
+    margin-bottom: 5px;
+  }
+  
+  .conversation-summary {
+    font-size: 0.9em;
+    color: #666;
+  }

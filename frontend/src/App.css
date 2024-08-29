@@ -1,45 +1,23 @@
 .App {
-  font-family: Arial, sans-serif;
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 20px;
-}
-
-.App-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  font-family: Arial, sans-serif;
 }
 
-.App-header h1 {
-  margin: 0;
+.main-content {
+  flex-grow: 1;
+  padding: 20px;
+  max-width: 800px;
+}
+
+h1 {
   color: #333;
 }
 
-.connection-status {
-  padding: 5px 10px;
-  border-radius: 5px;
-  font-size: 14px;
+form {
+  margin-bottom: 20px;
 }
 
-.connected {
-  background-color: #4CAF50;
-  color: white;
-}
-
-.disconnected {
-  background-color: #f44336;
-  color: white;
-}
-
-.App-main {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.execute-button {
+button {
   padding: 10px 20px;
   font-size: 16px;
   background-color: #4CAF50;
@@ -50,11 +28,18 @@
   transition: background-color 0.3s;
 }
 
-.execute-button:hover:not(:disabled) {
+button:hover:not(:disabled) {
   background-color: #45a049;
 }
 
-.execute-button:disabled {
+button:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
+}
+
+pre {
+  background-color: #f0f0f0;
+  padding: 10px;
+  border-radius: 5px;
+  overflow-x: auto;
 }

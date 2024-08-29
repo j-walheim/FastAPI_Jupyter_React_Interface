@@ -171,6 +171,31 @@ class ConversationMemory:
         ''', (conversation_id, user_id))
         return cursor.fetchall()
 
+    def get_conversation_summary(self, conversation_id, user_id):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT content
+            FROM conversation_messages
+            WHERE conversation_id = ? AND user_id = ?
+            ORDER BY message_number DESC
+            LIMIT 1
+        ''', (conversation_id, user_id))
+        last_message = cursor.fetchone()
+        return last_message[0] if last_message else "No messages in this conversation."
+
+    def get_all_conversations(self, user_id):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT conversation_id, 
+                   (SELECT content FROM conversation_messages cm 
+                    WHERE cm.conversation_id = c.conversation_id 
+                    ORDER BY message_number DESC LIMIT 1) as summary
+            FROM conversation_messages c
+            WHERE user_id = ?
+        ''', (user_id,))
+        conversations = [{'id': row[0], 'summary': row[1]} for row in cursor.fetchall()]
+        return conversations
+
 # Initialize the conversation memory
 conversation_memory = ConversationMemory()
 
@@ -258,17 +283,35 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection established")
     
-    # Generate a random conversation_id using UUID
     conversation_id = str(uuid.uuid4())
     user_id = "test_user"
     
+    await websocket.send_json({
+        'type': 'conversation_id',
+        'conversation_id': conversation_id
+    })
     
     try:
         while True:
             data = await websocket.receive_json()
             if data['type'] == 'execute':
                 instructions = data['instructions']
+                conversation_id = data.get('conversation_id', conversation_id)
                 await agent_conversation(instructions, websocket, conversation_id, user_id)
+            elif data['type'] == 'load_conversation':
+                conversation_id = data['conversation_id']
+                history = conversation_memory.get_conversation_history(conversation_id, user_id)
+                await websocket.send_json({
+                    'type': 'conversation_summary',
+                    'conversation_id': conversation_id,
+                    'summary': history[-1] if history else "No messages in this conversation."
+                })
+            elif data['type'] == 'get_conversations':
+                conversations = conversation_memory.get_all_conversations(user_id)
+                await websocket.send_json({
+                    'type': 'all_conversations',
+                    'conversations': conversations
+                })
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:
