@@ -80,11 +80,11 @@ class CodingAgent:
             ("human", instructions)
         ])
 
-        response = await self.llm.ainvoke(prompt.format_messages(instructions=instructions))
+        response = self.llm.invoke(prompt.format_messages(instructions=instructions))
         return response.content
 
     @observe()
-    async def generate_and_execute_code(self, instructions):
+    def generate_and_execute_code(self, instructions):
         for attempt in range(self.max_attempts):
             try:
 
