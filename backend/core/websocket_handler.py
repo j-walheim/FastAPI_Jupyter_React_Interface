@@ -56,11 +56,16 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                     for msg_number, msg_data in history:
                         try:
                             parsed_msg = msg_data
+                            message_content = parsed_msg['message']['content']
+
                             await connection_manager.send_message({
                                 'type': 'chat_message',
-                                'message': parsed_msg['message']
+                                'message': {
+                                    'role': parsed_msg['message']['role'],
+                                    'content': message_content
+                                }
                             }, websocket)
-                            print(f"  Sent message {msg_number}: Role: {parsed_msg['message']['role']}, Content: {parsed_msg['message']['content'][:50]}...")
+                            print(f"  Sent message {msg_number}: Role: {parsed_msg['message']['role']}, Content: {message_content[:50]}...")
                         except Exception as e:
                             print(f"  Error sending message {msg_number}: {e}")
                             print(f"  Raw message data: {msg_data}")

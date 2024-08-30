@@ -27,7 +27,7 @@ class ChatManager:
 
     def extract_code_blocks(self, content, block_type):
         import re
-        pattern = rf""
+        pattern = rf"```{block_type}\n(.*?)```"
         blocks = re.findall(pattern, content, re.DOTALL)
         return '\n'.join(block.strip() for block in blocks)
 
@@ -49,9 +49,14 @@ class ChatManager:
         ConversationMemory.add_message(session, user_id, conversation_id, message_counter, user_message)
         message_counter += 1
 
-        context = "\n".join([f"[{h['message']['role']}]: {h['message']['content']}" for h in history])
-        
-        if len(history) == 1:
+        # ToDo: figure out right history content - we should not use the whole history, but summarise it in some way
+        if isinstance(history, list):
+            context = "\n".join([f"[{h[1]['message']['role']}]: {h[1]['message']['content']}" for h in history])
+        else:
+            print_verbose("Warning: history is not in the expected format. Treating as empty.")
+            context = ""
+
+        if len(history) < 1:
             summary = self.generate_summary(instructions)
             ConversationMemory.update_summary(session, user_id, summary)
             print_verbose(f"Generated and stored summary: {summary}")
@@ -70,9 +75,7 @@ class ChatManager:
                 'type': 'chat_message',
                 'message': {
                     'role': 'assistant',
-                    'content': 'Generated Code:',
-                    'details': generated_code,
-                    'collapsible': True
+                    'content': f"Generated Code:\n\n```python\n{generated_code}\n```"
                 }
             }
             ConversationMemory.add_message(session, user_id, conversation_id, message_counter, generated_code_message)
@@ -89,9 +92,7 @@ class ChatManager:
                     'type': 'chat_message',
                     'message': {
                         'role': 'system',
-                        'content': 'Shell Execution Result:',
-                        'details': shell_result,
-                        'collapsible': True
+                        'content': f"Shell Execution Result:\n\n```\n{shell_result}\n```"
                     }
                 }
                 ConversationMemory.add_message(session, user_id, conversation_id, message_counter, shell_result_message)
@@ -104,9 +105,7 @@ class ChatManager:
                     'type': 'chat_message',
                     'message': {
                         'role': 'system',
-                        'content': 'Python Execution Result:',
-                        'details': python_result,
-                        'collapsible': True
+                        'content': f"Python Execution Result:\n\n```\n{python_result}\n```"
                     }
                 }
                 ConversationMemory.add_message(session, user_id, conversation_id, message_counter, python_result_message)
@@ -120,9 +119,7 @@ class ChatManager:
                         'type': 'chat_message',
                         'message': {
                             'role': 'system',
-                            'content': 'Execution Summary:',
-                            'details': summary,
-                            'collapsible': True
+                            'content': f"Execution Summary:\n\n{summary}"
                         }
                     }
                     ConversationMemory.add_message(session, user_id, conversation_id, message_counter, summary_message)
