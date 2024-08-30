@@ -124,11 +124,8 @@ class ExecutionAgent:
                 packages = cmd.split('pip install ')[1].split()
                 install_result = install_packages(packages)
                 results.append(install_result)
-                # ToDo: Find better way of checking if package installation failed
-                if install_result.returncode != 0:
-                    return False, f"Package installation failed: {install_result.stderr}"
         
-        return True, "\n".join(str(result) for result in results)
+        return "\n".join(results)
 
     @observe()
     async def execute_python_code(self, python_code: str):
@@ -152,6 +149,13 @@ class ChatManager:
         self.message_queue = message_queue
         self.coding_agent = CodingAgent()
         self.execution_agent = ExecutionAgent()
+        self.llm = ChatGroq(
+            model='llama-3.1-70b-versatile',
+            temperature=0,
+            max_tokens=None,
+            timeout=None,
+            max_retries=2
+        )
 
     async def send(self, message: dict):
         await self.message_queue.put(message)
@@ -214,7 +218,7 @@ class ChatManager:
 
             # Execute shell commands if present
             if shell_commands:
-                shell_success, shell_result = await self.execution_agent.execute_shell_commands(shell_commands)
+                shell_result = await self.execution_agent.execute_shell_commands(shell_commands)
                 shell_result_message = {
                     'type': 'chat_message',
                     'message': {
@@ -226,9 +230,6 @@ class ChatManager:
                 }
                 conversation_memory.add_message(conversation_id, user_id, shell_result_message)
                 await self.send(shell_result_message)
-                if not shell_success:
-                    instructions = f"{instructions}\n\nShell command execution failed. Error: {shell_result}\nPlease correct the code and try again."
-                    continue
 
             # Execute Python code if present
             if python_code:
@@ -246,7 +247,21 @@ class ChatManager:
                 
                 await self.send(python_result_message)
 
-                if not python_success:
+                if python_success:
+                    # Generate and send summary after successful execution
+                    summary = await self.generate_execution_summary(instructions, python_result)
+                    summary_message = {
+                        'type': 'chat_message',
+                        'message': {
+                            'role': 'system',
+                            'content': 'Execution Summary:',
+                            'details': summary,
+                            'collapsible': True
+                        }
+                    }
+                    conversation_memory.add_message(conversation_id, user_id, summary_message)
+                    await self.send(summary_message)
+                else:
                     if attempt < self.execution_agent.max_attempts - 1:
                         print_verbose(f"Execution failed. Retrying with updated instructions.")
                         instructions = f"{instructions}\n\nExecution failed. Error: {python_result}\nPlease correct the code and try again."
@@ -288,6 +303,15 @@ class ChatManager:
             ("human", "{instructions}")
         ])
         response = llm.invoke(prompt.format_messages(instructions=instructions))
+        return response.content
+
+    @observe(as_type="generation")
+    async def generate_execution_summary(self, instructions: str, execution_result: str):
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are an AI assistant that summarizes code execution results. Provide a concise summary of the given instructions and execution results."),
+            ("human", "Instructions: {instructions}\n\nExecution Result: {execution_result}\n\nPlease provide a brief summary of what was requested and the outcome of the execution.")
+        ])
+        response = self.llm.invoke(prompt.format_messages(instructions=instructions, execution_result=execution_result))
         return response.content
 
 class ConversationMemory:
@@ -459,9 +483,9 @@ def install_packages(packages):
     results = []
     for package in packages:
         venv_pip = venv_path / 'bin' / 'pip'
-        result = subprocess.run([str(venv_pip), "install", package], capture_output=True, text=True)
-        results.append(result)
-    return results
+        result = subprocess.run(f"{venv_pip} install {package}", capture_output=True, text=True, shell=True)
+        results.append(f"Installation result for {package}: {result.stdout}\n{result.stderr}")
+    return "\n".join(results)
 
 async def load_conversation(websocket: WebSocket, conversation_id: str, user_id: str):
     history = conversation_memory.get_conversation_history(conversation_id, user_id)
