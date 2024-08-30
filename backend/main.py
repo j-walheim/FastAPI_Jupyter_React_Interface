@@ -187,6 +187,9 @@ class ChatManager:
         execution_id = str(uuid.uuid4())
         logger.info(f"Starting agent conversation for instructions: {instructions}")
 
+        # Initialize message counter
+        message_counter = len(history) + 1
+
         # Add user message to conversation memory
         user_message = {
             'type': 'chat_message',
@@ -195,7 +198,8 @@ class ChatManager:
                 'content': instructions,
             }
         }
-        ConversationMemory.add_message(session, user_id, conversation_id, len(history) + 1, user_message)
+        ConversationMemory.add_message(session, user_id, conversation_id, message_counter, user_message)
+        message_counter += 1
 
         context = "\n".join([f"[{h['message']['role']}]: {h['message']['content']}" for h in history])
         
@@ -223,7 +227,8 @@ class ChatManager:
                     'collapsible': True
                 }
             }
-            ConversationMemory.add_message(session, user_id, conversation_id, len(history) + 2 + attempt * 2, generated_code_message)
+            ConversationMemory.add_message(session, user_id, conversation_id, message_counter, generated_code_message)
+            message_counter += 1
             
             await self.send(generated_code_message)
 
@@ -242,7 +247,8 @@ class ChatManager:
                         'collapsible': True
                     }
                 }
-                ConversationMemory.add_message(session, user_id, conversation_id, len(history) + 3 + attempt * 2, shell_result_message)
+                ConversationMemory.add_message(session, user_id, conversation_id, message_counter, shell_result_message)
+                message_counter += 1
                 await self.send(shell_result_message)
 
             # Execute Python code if present
@@ -257,7 +263,8 @@ class ChatManager:
                         'collapsible': True
                     }
                 }
-                ConversationMemory.add_message(session, user_id, conversation_id, len(history) + 4 + attempt * 2, python_result_message)
+                ConversationMemory.add_message(session, user_id, conversation_id, message_counter, python_result_message)
+                message_counter += 1
                 
                 await self.send(python_result_message)
 
@@ -273,7 +280,8 @@ class ChatManager:
                             'collapsible': True
                         }
                     }
-                    ConversationMemory.add_message(session, user_id, conversation_id, len(history) + 5 + attempt * 2, summary_message)
+                    ConversationMemory.add_message(session, user_id, conversation_id, message_counter, summary_message)
+                    message_counter += 1
                     await self.send(summary_message)
                 else:
                     if attempt < self.execution_agent.max_attempts - 1:
