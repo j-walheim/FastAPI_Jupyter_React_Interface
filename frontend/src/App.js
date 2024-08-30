@@ -54,19 +54,20 @@ function App() {
       } else if (data.type === 'conversation_id') {
         setConversationId(data.conversation_id);
         setConversations(prevConversations => [
-          ...prevConversations,
-          { id: data.conversation_id, summary: 'New conversation' }
+          { id: data.conversation_id, summary: 'New conversation' },
+          ...prevConversations
         ]);
       } else if (data.type === 'conversation_summary') {
-        setConversations(prevConversations => 
-          prevConversations.map(conv => 
+        setConversations(prevConversations => {
+          const updatedConversations = prevConversations.map(conv => 
             conv.id === data.conversation_id 
               ? { ...conv, summary: data.summary } 
               : conv
-          )
-        );
+          );
+          return [...updatedConversations];
+        });
       } else if (data.type === 'all_conversations') {
-        setConversations(data.conversations);
+        setConversations(data.conversations.reverse());
       } else if (data.type === 'loaded_conversation') {
         console.log('Loaded conversation:', data.messages);  // Add this line for debugging
         setChatHistory(data.messages);
