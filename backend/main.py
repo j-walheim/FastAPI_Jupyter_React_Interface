@@ -391,6 +391,7 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
     try:
         while True:
             data = await websocket.receive_json()
+            print(f"Received data: {data}")  # Add this line for logging
             
             if data['type'] == 'message':
                 instructions = data['message']
@@ -401,7 +402,9 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
             
             elif data['type'] == 'meta':
                 if data['action'] == 'get_conversations':
+                    print("Fetching conversations")  # Add this line for logging
                     conversations = ConversationMemory.get_all_conversations(session, user_id)
+                    print(f"Found {len(conversations)} conversations")  # Add this line for logging
                     await connection_manager.send_message({
                         'type': 'meta',
                         'action': 'conversations',

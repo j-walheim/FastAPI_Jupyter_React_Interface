@@ -23,16 +23,27 @@ function App() {
     }
   };
 
+  const requestConversations = () => {
+    if (ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ 
+        type: 'meta',
+        action: 'get_conversations'
+      }));
+    }
+  };
+
   useEffect(() => {
     ws.current = new WebSocket('ws://localhost:8000/ws');
     ws.current.onopen = () => {
       console.log('WebSocket Connected');
-      ws.current.send(JSON.stringify({ type: 'get_conversations' }));
+      requestConversations();
     };
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
       console.log('Received message:', data);
-      if (data.type === 'message') {
+      console.log('Received data type:', data.type, 'Action:', data.action || 'N/A');
+      
+      if (data.type === 'chat_message') {
         setChatHistory(prevHistory => [...prevHistory, data.message]);
       } else if (data.type === 'meta') {
         switch (data.action) {
@@ -42,37 +53,6 @@ function App() {
           case 'loaded_conversation':
             setChatHistory(data.data.history);
             setConversationId(data.data.id);
-            break;
-          case 'conversation_id':
-            setConversationId(data.data);
-            setConversations(prevConversations => [
-              { id: data.data, summary: 'New conversation' },
-              ...prevConversations
-            ]);
-            break;
-          case 'conversation_summary':
-            setConversations(prevConversations => {
-              const updatedConversations = prevConversations.map(conv => 
-                conv.id === data.data.id 
-                  ? { ...conv, summary: data.data.summary } 
-                  : conv
-              );
-              return [...updatedConversations];
-            });
-            break;
-          case 'delete_conversation':
-            setConversations(prevConversations => 
-              prevConversations.filter(conv => conv.id !== data.data.id)
-            );
-            if (conversationId === data.data.id) {
-              setConversationId('');
-              setChatHistory([]);
-            }
-            break;
-          case 'clear_conversation':
-            if (conversationId === data.data.id) {
-              setChatHistory([]);
-            }
             break;
           case 'new_conversation':
             setConversationId(data.data.conversation_id);
@@ -85,6 +65,8 @@ function App() {
           default:
             console.warn('Unknown meta action:', data.action);
         }
+      } else {
+        console.warn('Unknown message type:', data.type);
       }
     };
     return () => {
