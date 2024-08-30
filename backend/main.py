@@ -195,7 +195,7 @@ class ChatManager:
                 'content': instructions,
             }
         }
-        ConversationMemory.add_message(session, user_id, len(history) + 1, user_message)
+        ConversationMemory.add_message(session, user_id, conversation_id, len(history) + 1, user_message)
 
         context = "\n".join([f"[{h['message']['role']}]: {h['message']['content']}" for h in history])
         
@@ -223,7 +223,7 @@ class ChatManager:
                     'collapsible': True
                 }
             }
-            ConversationMemory.add_message(session, user_id, len(history) + 2 + attempt * 2, generated_code_message)
+            ConversationMemory.add_message(session, user_id, conversation_id, len(history) + 2 + attempt * 2, generated_code_message)
             
             await self.send(generated_code_message)
 
@@ -242,7 +242,7 @@ class ChatManager:
                         'collapsible': True
                     }
                 }
-                ConversationMemory.add_message(session, user_id, len(history) + 3 + attempt * 2, shell_result_message)
+                ConversationMemory.add_message(session, user_id, conversation_id, len(history) + 3 + attempt * 2, shell_result_message)
                 await self.send(shell_result_message)
 
             # Execute Python code if present
@@ -257,7 +257,7 @@ class ChatManager:
                         'collapsible': True
                     }
                 }
-                ConversationMemory.add_message(session, user_id, len(history) + 4 + attempt * 2, python_result_message)
+                ConversationMemory.add_message(session, user_id, conversation_id, len(history) + 4 + attempt * 2, python_result_message)
                 
                 await self.send(python_result_message)
 
@@ -273,7 +273,7 @@ class ChatManager:
                             'collapsible': True
                         }
                     }
-                    ConversationMemory.add_message(session, user_id, len(history) + 5 + attempt * 2, summary_message)
+                    ConversationMemory.add_message(session, user_id, conversation_id, len(history) + 5 + attempt * 2, summary_message)
                     await self.send(summary_message)
                 else:
                     if attempt < self.execution_agent.max_attempts - 1:
@@ -330,16 +330,16 @@ class ChatManager:
 
 class ConversationMemory:
     @staticmethod
-    def add_message(session: Session, user_id: str, message_number: int, message_data: dict):
-        conversation = session.exec(select(Conversation).where(Conversation.user_id == user_id)).first()
+    def add_message(session: Session, user_id: str, conversation_id: str, message_number: int, message_data: dict):
+        conversation = session.exec(select(Conversation).where(Conversation.id == conversation_id)).first()
         if not conversation:
-            conversation = Conversation(user_id=user_id)
+            conversation = Conversation(id=conversation_id, user_id=user_id)
             session.add(conversation)
             session.commit()
             session.refresh(conversation)
         
         message = Message(
-            conversation_id=conversation.id,
+            conversation_id=conversation_id,
             user_id=user_id,
             message_number=message_number,
             message_data=json.dumps(message_data)
