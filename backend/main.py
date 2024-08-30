@@ -124,10 +124,11 @@ class ExecutionAgent:
                 packages = cmd.split('pip install ')[1].split()
                 install_result = install_packages(packages)
                 results.append(install_result)
-                if "Successfully installed" not in install_result:
-                    return False, f"Package installation failed: {install_result}"
+                # ToDo: Find better way of checking if package installation failed
+                if install_result.returncode != 0:
+                    return False, f"Package installation failed: {install_result.stderr}"
         
-        return True, "\n".join(results)
+        return True, "\n".join(str(result) for result in results)
 
     @observe()
     async def execute_python_code(self, python_code: str):
@@ -458,9 +459,9 @@ def install_packages(packages):
     results = []
     for package in packages:
         venv_pip = venv_path / 'bin' / 'pip'
-        result = subprocess.run(f"{venv_pip} install {package}", capture_output=True, text=True, shell=True)
-        results.append(f"Installation result for {package}: {result.stdout}\n{result.stderr}")
-    return "\n".join(results)
+        result = subprocess.run([str(venv_pip), "install", package], capture_output=True, text=True)
+        results.append(result)
+    return results
 
 async def load_conversation(websocket: WebSocket, conversation_id: str, user_id: str):
     history = conversation_memory.get_conversation_history(conversation_id, user_id)
