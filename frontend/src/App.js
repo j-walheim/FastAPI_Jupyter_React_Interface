@@ -50,9 +50,12 @@ function App() {
           case 'conversations':
             setConversations(data.data.reverse());
             break;
-          case 'loaded_conversation':
-            setChatHistory(data.data.history);
+          case 'conversation_info':
             setConversationId(data.data.id);
+            setChatHistory([]);
+            break;
+          case 'conversation_loaded':
+            console.log('Conversation fully loaded');
             break;
           case 'new_conversation':
             setConversationId(data.data.conversation_id);
@@ -72,7 +75,7 @@ function App() {
     return () => {
       ws.current.close();
     };
-  }, [conversationId]);
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -93,10 +96,10 @@ function App() {
   const handleLoadConversation = (id) => {
     console.log('Loading conversation:', id);
     setConversationId(id);
-    setChatHistory([]);
     if (ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ 
-        type: 'load_conversation', 
+        type: 'meta',
+        action: 'load_conversation',
         conversation_id: id
       }));
     }

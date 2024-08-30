@@ -391,7 +391,7 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
     try:
         while True:
             data = await websocket.receive_json()
-            print(f"Received data: {data}")  # Add this line for logging
+            print(f"Received data: {data}")
             
             if data['type'] == 'message':
                 instructions = data['message']
@@ -402,9 +402,9 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
             
             elif data['type'] == 'meta':
                 if data['action'] == 'get_conversations':
-                    print("Fetching conversations")  # Add this line for logging
+                    print("Fetching conversations")
                     conversations = ConversationMemory.get_all_conversations(session, user_id)
-                    print(f"Found {len(conversations)} conversations")  # Add this line for logging
+                    print(f"Found {len(conversations)} conversations")
                     await connection_manager.send_message({
                         'type': 'meta',
                         'action': 'conversations',
@@ -414,13 +414,37 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                     conversation_id = data['conversation_id']
                     history = ConversationMemory.get_conversation_history(session, conversation_id, user_id)
                     summary = ConversationMemory.get_summary(session, conversation_id)
+                    
+                    print(f"Loading conversation: {conversation_id}")
+                    print(f"History length: {len(history)}")
+                    
+                    # Send the conversation ID and summary first
                     await connection_manager.send_message({
                         'type': 'meta',
-                        'action': 'loaded_conversation',
+                        'action': 'conversation_info',
                         'data': {
-                            'history': history,
+                            'id': conversation_id,
                             'summary': summary
                         }
+                    }, websocket)
+                    
+                    # Send each message individually
+                    for msg_number, msg_data in history:
+                        try:
+                            parsed_msg = msg_data
+                            await connection_manager.send_message({
+                                'type': 'chat_message',
+                                'message': parsed_msg['message']
+                            }, websocket)
+                            print(f"  Sent message {msg_number}: Role: {parsed_msg['message']['role']}, Content: {parsed_msg['message']['content'][:50]}...")
+                        except Exception as e:
+                            print(f"  Error sending message {msg_number}: {e}")
+                            print(f"  Raw message data: {msg_data}")
+                    
+                    # Send a message to indicate that all messages have been sent
+                    await connection_manager.send_message({
+                        'type': 'meta',
+                        'action': 'conversation_loaded'
                     }, websocket)
                 elif data['action'] == 'new_conversation':
                     new_conversation_id = str(uuid.uuid4())
@@ -448,6 +472,6 @@ def run_in_venv(script_path, working_dir, venv_path):
     return result
 
 if __name__ == "__main__":
-    create_db_and_tables()  # Add this line to create tables
+    create_db_and_tables()  
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
