@@ -23,9 +23,14 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                 conversation_id = data['conversation_id']
                 history = ConversationMemory.get_conversation_history(session, conversation_id, user_id)
                 
-                chat_manager = ChatManager(asyncio.Queue())
+                message_queue = asyncio.Queue()
+                chat_manager = ChatManager(message_queue)
+                
+                # Start a task to process messages from the queue
+                asyncio.create_task(process_queue(message_queue, websocket))
+                
                 generated_code, execution_result = await chat_manager.chat(instructions, history, conversation_id, user_id, session)
-            
+                
             elif data['type'] == 'meta':
                 if data['action'] == 'get_conversations':
                     print("Fetching conversations")
@@ -87,3 +92,9 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
 
     except WebSocketDisconnect:
         await connection_manager.disconnect(websocket)
+
+async def process_queue(queue: asyncio.Queue, websocket: WebSocket):
+    while True:
+        message = await queue.get()
+        await connection_manager.send_message(message, websocket)
+        queue.task_done()

@@ -32,4 +32,10 @@ class WebSocketConnectionManager:
         for connection, _ in self.active_connections[:]:
             await self.send_message(message, connection)
 
+    async def send_message_to_client(self, message: Dict, client_id: str):
+        for connection, conn_client_id in self.active_connections:
+            if conn_client_id == client_id:
+                await self.send_message(message, connection)
+                break
+
 connection_manager = WebSocketConnectionManager()
