@@ -12,7 +12,7 @@ class Message(SQLModel, table=True):
     user_id: str
     message_number: int
     message_data: str  # This will store the JSON string
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
     conversation: "Conversation" = Relationship(back_populates="messages")
 
