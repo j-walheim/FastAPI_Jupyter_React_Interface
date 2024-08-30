@@ -166,3 +166,4 @@ coding/*
 .env
 conversations.db
 coding_agent/*
+sql_app.db

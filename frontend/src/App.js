@@ -15,15 +15,10 @@ function App() {
   const ws = useRef(null);
 
   const handleNewConversation = () => {
-    const newConversationId = uuidv4();
-    setConversationId(newConversationId);
-    setInstructions('');
-    setOutput('');
-    setGeneratedCode('');
     if (ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ 
-        type: 'new_conversation', 
-        conversation_id: newConversationId
+        type: 'meta',
+        action: 'new_conversation'
       }));
     }
   };
@@ -36,47 +31,66 @@ function App() {
     };
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      console.log('Received message:', data);  // Add this line for debugging
-      if (data.type === 'chat_message') {
-        setChatHistory(prevHistory => {
-          const newHistory = [...prevHistory, data.message];
-          console.log('Updated chat history:', newHistory);  // Add this line for debugging
-          return newHistory;
-        });
-      } else if (data.type === 'result') {
-        setOutput(data.output);
-        setGeneratedCode(data.generated_code);
-        setChatHistory(prevHistory => {
-          const newHistory = [...prevHistory, { role: 'assistant', content: data.output, collapsible: true }];
-          console.log('Updated chat history:', newHistory);  // Add this line for debugging
-          return newHistory;
-        });
-      } else if (data.type === 'conversation_id') {
-        setConversationId(data.conversation_id);
-        setConversations(prevConversations => [
-          { id: data.conversation_id, summary: 'New conversation' },
-          ...prevConversations
-        ]);
-      } else if (data.type === 'conversation_summary') {
-        setConversations(prevConversations => {
-          const updatedConversations = prevConversations.map(conv => 
-            conv.id === data.conversation_id 
-              ? { ...conv, summary: data.summary } 
-              : conv
-          );
-          return [...updatedConversations];
-        });
-      } else if (data.type === 'all_conversations') {
-        setConversations(data.conversations.reverse());
-      } else if (data.type === 'loaded_conversation') {
-        console.log('Loaded conversation:', data.messages);  // Add this line for debugging
-        setChatHistory(data.messages);
+      console.log('Received message:', data);
+      if (data.type === 'message') {
+        setChatHistory(prevHistory => [...prevHistory, data.message]);
+      } else if (data.type === 'meta') {
+        switch (data.action) {
+          case 'conversations':
+            setConversations(data.data.reverse());
+            break;
+          case 'loaded_conversation':
+            setChatHistory(data.data.history);
+            setConversationId(data.data.id);
+            break;
+          case 'conversation_id':
+            setConversationId(data.data);
+            setConversations(prevConversations => [
+              { id: data.data, summary: 'New conversation' },
+              ...prevConversations
+            ]);
+            break;
+          case 'conversation_summary':
+            setConversations(prevConversations => {
+              const updatedConversations = prevConversations.map(conv => 
+                conv.id === data.data.id 
+                  ? { ...conv, summary: data.data.summary } 
+                  : conv
+              );
+              return [...updatedConversations];
+            });
+            break;
+          case 'delete_conversation':
+            setConversations(prevConversations => 
+              prevConversations.filter(conv => conv.id !== data.data.id)
+            );
+            if (conversationId === data.data.id) {
+              setConversationId('');
+              setChatHistory([]);
+            }
+            break;
+          case 'clear_conversation':
+            if (conversationId === data.data.id) {
+              setChatHistory([]);
+            }
+            break;
+          case 'new_conversation':
+            setConversationId(data.data.conversation_id);
+            setConversations(prevConversations => [
+              { id: data.data.conversation_id, summary: 'New conversation' },
+              ...prevConversations
+            ]);
+            setChatHistory([]);
+            break;
+          default:
+            console.warn('Unknown meta action:', data.action);
+        }
       }
     };
     return () => {
       ws.current.close();
     };
-  }, []);
+  }, [conversationId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -86,8 +100,8 @@ function App() {
         { role: 'human', content: instructions }
       ]);
       ws.current.send(JSON.stringify({ 
-        type: 'execute', 
-        instructions: instructions,
+        type: 'message',
+        message: instructions,
         conversation_id: conversationId
       }));
       setInstructions('');
@@ -97,7 +111,7 @@ function App() {
   const handleLoadConversation = (id) => {
     console.log('Loading conversation:', id);
     setConversationId(id);
-    setChatHistory([]);  // Clear the current chat history
+    setChatHistory([]);
     if (ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ 
         type: 'load_conversation', 

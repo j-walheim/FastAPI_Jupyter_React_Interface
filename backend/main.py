@@ -5,7 +5,7 @@ import uuid
 import os
 import sys
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from jupyter_client import KernelManager
 from jupyter_client.kernelspec import KernelSpecManager
@@ -17,13 +17,14 @@ import venv
 import openai
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
-import sqlite3
 from datetime import datetime
 import colorama
 from colorama import Fore, Style
 from langfuse.decorators import observe, langfuse_context
 from typing import List, Tuple, Dict, Any, Optional
 import json
+from sqlmodel import Session, select, create_engine, SQLModel
+from models import Message, Conversation
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,6 +46,19 @@ verbose = os.environ.get('VERBOSE', 'false').lower() == 'true'
 
 # Initialize colorama
 colorama.init(autoreset=True)
+
+# Database setup
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./sql_app.db")
+engine = create_engine(DATABASE_URL)
+
+# Create tables
+def create_db_and_tables():
+    SQLModel.metadata.create_all(engine)
+
+# Dependency to get the database session
+def get_session():
+    with Session(engine) as session:
+        yield session
 
 def print_verbose(message):
     if verbose:
@@ -167,7 +181,7 @@ class ChatManager:
         return '\n'.join(block.strip() for block in blocks)
 
     @observe()
-    async def chat(self, instructions: str, history: List[Dict[str, Any]], conversation_id: str, user_id: str):
+    async def chat(self, instructions: str, history: List[Dict[str, Any]], conversation_id: str, user_id: str, session: Session):
         print_verbose(f"Starting agent conversation for instructions: {instructions}")
         
         execution_id = str(uuid.uuid4())
@@ -181,13 +195,13 @@ class ChatManager:
                 'content': instructions,
             }
         }
-        conversation_memory.add_message(conversation_id, user_id, user_message)
+        ConversationMemory.add_message(session, user_id, len(history) + 1, user_message)
 
-        context = "\n".join([f"[{h[0]}] {h[1]} ({h[2]}): {h[3]}" for h in history])
+        context = "\n".join([f"[{h['message']['role']}]: {h['message']['content']}" for h in history])
         
         if len(history) == 1:
             summary = self.generate_summary(instructions)
-            conversation_memory.add_summary(conversation_id, user_id, summary)
+            ConversationMemory.update_summary(session, user_id, summary)
             print_verbose(f"Generated and stored summary: {summary}")
         
         if context:
@@ -209,7 +223,7 @@ class ChatManager:
                     'collapsible': True
                 }
             }
-            conversation_memory.add_message(conversation_id, user_id, generated_code_message)
+            ConversationMemory.add_message(session, user_id, len(history) + 2 + attempt * 2, generated_code_message)
             
             await self.send(generated_code_message)
 
@@ -228,7 +242,7 @@ class ChatManager:
                         'collapsible': True
                     }
                 }
-                conversation_memory.add_message(conversation_id, user_id, shell_result_message)
+                ConversationMemory.add_message(session, user_id, len(history) + 3 + attempt * 2, shell_result_message)
                 await self.send(shell_result_message)
 
             # Execute Python code if present
@@ -243,7 +257,7 @@ class ChatManager:
                         'collapsible': True
                     }
                 }
-                conversation_memory.add_message(conversation_id, user_id, python_result_message)
+                ConversationMemory.add_message(session, user_id, len(history) + 4 + attempt * 2, python_result_message)
                 
                 await self.send(python_result_message)
 
@@ -259,7 +273,7 @@ class ChatManager:
                             'collapsible': True
                         }
                     }
-                    conversation_memory.add_message(conversation_id, user_id, summary_message)
+                    ConversationMemory.add_message(session, user_id, len(history) + 5 + attempt * 2, summary_message)
                     await self.send(summary_message)
                 else:
                     if attempt < self.execution_agent.max_attempts - 1:
@@ -315,192 +329,122 @@ class ChatManager:
         return response.content
 
 class ConversationMemory:
-    def __init__(self, db_path='conversations.db'):
-        self.conn = sqlite3.connect(db_path)
-        self.create_table()
-        self.create_summary_table()
+    @staticmethod
+    def add_message(session: Session, user_id: str, message_number: int, message_data: dict):
+        conversation = session.exec(select(Conversation).where(Conversation.user_id == user_id)).first()
+        if not conversation:
+            conversation = Conversation(user_id=user_id)
+            session.add(conversation)
+            session.commit()
+            session.refresh(conversation)
+        
+        message = Message(
+            conversation_id=conversation.id,
+            user_id=user_id,
+            message_number=message_number,
+            message_data=json.dumps(message_data)
+        )
+        session.add(message)
+        session.commit()
 
-    def create_table(self):
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS conversation_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                conversation_id TEXT,
-                user_id TEXT,
-                message_number INTEGER,
-                timestamp DATETIME,
-                message_data TEXT
-            )
-        ''')
-        self.conn.commit()
+    @staticmethod
+    def get_conversation_history(session: Session, conversation_id: str, user_id: str):
+        messages = session.exec(select(Message).where(Message.conversation_id == conversation_id).order_by(Message.message_number)).all()
+        return [(message.message_number, json.loads(message.message_data)) for message in messages]
 
-    def create_summary_table(self):
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS conversation_summaries (
-                conversation_id TEXT PRIMARY KEY,
-                user_id TEXT,
-                summary TEXT
-            )
-        ''')
-        self.conn.commit()
+    @staticmethod
+    def update_summary(session: Session, user_id: str, summary: str):
+        conversation = session.exec(select(Conversation).where(Conversation.user_id == user_id)).first()
+        if conversation:
+            conversation.summary = summary
+            conversation.updated_at = datetime.utcnow()
+            session.commit()
 
-    def add_message(self, conversation_id, user_id, message_data):
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            SELECT MAX(message_number) FROM conversation_messages
-            WHERE conversation_id = ? AND user_id = ?
-        ''', (conversation_id, user_id))
-        last_message_number = cursor.fetchone()[0] or 0
-        new_message_number = last_message_number + 1
+    @staticmethod
+    def get_summary(session: Session, conversation_id: str):
+        conversation = session.exec(select(Conversation).where(Conversation.id == conversation_id)).first()
+        return conversation.summary if conversation else None
 
-        cursor.execute('''
-            INSERT INTO conversation_messages (conversation_id, user_id, message_number, timestamp, message_data)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (conversation_id, user_id, new_message_number, datetime.now(), json.dumps(message_data)))
-        self.conn.commit()
+    @staticmethod
+    def get_all_conversations(session: Session, user_id: str):
+        conversations = session.exec(select(Conversation).where(Conversation.user_id == user_id)).all()
+        return [{'id': conv.id, 'summary': conv.summary or 'No summary available'} for conv in conversations]
 
-    def add_summary(self, conversation_id, user_id, summary):
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            INSERT OR REPLACE INTO conversation_summaries (conversation_id, user_id, summary)
-            VALUES (?, ?, ?)
-        ''', (conversation_id, user_id, summary))
-        self.conn.commit()
-
-    def get_conversation_history(self, conversation_id, user_id):
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            SELECT message_number, message_data
-            FROM conversation_messages
-            WHERE conversation_id = ? AND user_id = ?
-            ORDER BY message_number
-        ''', (conversation_id, user_id))
-        return [(row[0], json.loads(row[1])) for row in cursor.fetchall()]
-
-    def get_conversation_summary(self, conversation_id, user_id):
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            SELECT content
-            FROM conversation_messages
-            WHERE conversation_id = ? AND user_id = ?
-            ORDER BY message_number DESC
-            LIMIT 1
-        ''', (conversation_id, user_id))
-        last_message = cursor.fetchone()
-        return last_message[0] if last_message else "No messages in this conversation."
-
-    def get_summary(self, conversation_id):
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            SELECT summary FROM conversation_summaries
-            WHERE conversation_id = ?
-        ''', (conversation_id,))
-        result = cursor.fetchone()
-        return result[0] if result else None
-
-    def get_all_conversations(self, user_id):
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            SELECT c.conversation_id, COALESCE(s.summary, 'No summary available') as summary
-            FROM (SELECT DISTINCT conversation_id FROM conversation_messages WHERE user_id = ?) c
-            LEFT JOIN conversation_summaries s ON c.conversation_id = s.conversation_id
-        ''', (user_id,))
-        conversations = [{'id': row[0], 'summary': row[1]} for row in cursor.fetchall()]
-        return conversations
+    @staticmethod
+    def create_new_conversation(session: Session, user_id: str, conversation_id: str):
+        conversation = Conversation(id=conversation_id, user_id=user_id)
+        session.add(conversation)
+        session.commit()
+        return conversation
 
 # Initialize managers
 connection_manager = WebSocketConnectionManager()
 chat_manager = ChatManager(asyncio.Queue())
-conversation_memory = ConversationMemory()
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(get_session)):
     client_id = str(uuid.uuid4())
     await connection_manager.connect(websocket, client_id)
     
-    conversation_id = str(uuid.uuid4())
     user_id = "test_user"
-    
-    await connection_manager.send_message({
-        'type': 'conversation_id',
-        'conversation_id': conversation_id
-    }, websocket)
     
     try:
         while True:
             data = await websocket.receive_json()
-            if data['type'] == 'execute':
-                instructions = data['instructions']
-                conversation_id = data.get('conversation_id', conversation_id)
-                history = conversation_memory.get_conversation_history(conversation_id, user_id)
-                await chat_manager.chat(instructions, history, conversation_id, user_id)
-            elif data['type'] == 'load_conversation':
+            
+            if data['type'] == 'message':
+                instructions = data['message']
                 conversation_id = data['conversation_id']
-                await load_conversation(websocket, conversation_id, user_id)
-            elif data['type'] == 'get_conversations':
-                conversations = conversation_memory.get_all_conversations(user_id)
-                await connection_manager.send_message({
-                    'type': 'all_conversations',
-                    'conversations': conversations
-                }, websocket)
-            elif data['type'] == 'new_conversation':
-                conversation_id = data['conversation_id']
-                await connection_manager.send_message({
-                    'type': 'conversation_id',
-                    'conversation_id': conversation_id
-                }, websocket)
+                history = ConversationMemory.get_conversation_history(session, conversation_id, user_id)
+                
+                generated_code, execution_result = await chat_manager.chat(instructions, history, conversation_id, user_id, session)
+            
+            elif data['type'] == 'meta':
+                if data['action'] == 'get_conversations':
+                    conversations = ConversationMemory.get_all_conversations(session, user_id)
+                    await connection_manager.send_message({
+                        'type': 'meta',
+                        'action': 'conversations',
+                        'data': conversations
+                    }, websocket)
+                elif data['action'] == 'load_conversation':
+                    conversation_id = data['conversation_id']
+                    history = ConversationMemory.get_conversation_history(session, conversation_id, user_id)
+                    summary = ConversationMemory.get_summary(session, conversation_id)
+                    await connection_manager.send_message({
+                        'type': 'meta',
+                        'action': 'loaded_conversation',
+                        'data': {
+                            'history': history,
+                            'summary': summary
+                        }
+                    }, websocket)
+                elif data['action'] == 'new_conversation':
+                    new_conversation_id = str(uuid.uuid4())
+                    ConversationMemory.create_new_conversation(session, user_id, new_conversation_id)
+                    await connection_manager.send_message({
+                        'type': 'meta',
+                        'action': 'new_conversation',
+                        'data': {
+                            'conversation_id': new_conversation_id
+                        }
+                    }, websocket)
+
     except WebSocketDisconnect:
-        logger.info("WebSocket disconnected")
         await connection_manager.disconnect(websocket)
-    except Exception as e:
-        logger.error(f"Error in WebSocket: {str(e)}")
-        logger.error(traceback.format_exc())
-        await connection_manager.disconnect(websocket)
-
-async def message_consumer(queue: asyncio.Queue):
-    while True:
-        message = await queue.get()
-        await connection_manager.broadcast(message)
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(message_consumer(chat_manager.message_queue))
-
-def run_in_venv(script_path, working_dir, venv_path):
-    venv_python = venv_path / 'bin' / 'python'
-    current_dir = os.getcwd()
-    try:
-        os.chdir(working_dir)
-        result = subprocess.run([str(venv_python), script_path], capture_output=True, text=True)
-    finally:
-        os.chdir(current_dir)
-    return result
 
 def install_packages(packages):
-    if isinstance(packages, str):
-        packages = [packages]
-    results = []
-    for package in packages:
-        venv_pip = venv_path / 'bin' / 'pip'
-        result = subprocess.run(f"{venv_pip} install {package}", capture_output=True, text=True, shell=True)
-        results.append(f"Installation result for {package}: {result.stdout}\n{result.stderr}")
-    return "\n".join(results)
+    print_verbose(f"Installing packages: {packages}")
+    result = subprocess.run([f"{venv_path}/bin/pip", "install"] + packages, capture_output=True, text=True)
+    return f"Installation {'succeeded' if result.returncode == 0 else 'failed'}: {result.stdout or result.stderr}"
 
-async def load_conversation(websocket: WebSocket, conversation_id: str, user_id: str):
-    history = conversation_memory.get_conversation_history(conversation_id, user_id)
-    summary = conversation_memory.get_summary(conversation_id)
-    
-    # Send each message in the history
-    for _, message in history:
-        await connection_manager.send_message(message, websocket)
-    
-    # Send the summary
-    await connection_manager.send_message({
-        'type': 'conversation_summary',
-        'summary': summary
-    }, websocket)
+def run_in_venv(script_path, working_dir, venv_path):
+    print_verbose(f"Running script: {script_path}")
+    python_executable = f"{venv_path}/bin/python"
+    result = subprocess.run([python_executable, script_path], cwd=working_dir, capture_output=True, text=True)
+    return result
 
 if __name__ == "__main__":
+    create_db_and_tables()  # Add this line to create tables
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
