@@ -4,8 +4,8 @@ from utils.helpers import print_verbose, install_packages, run_in_venv
 from langfuse.decorators import observe
 
 class ExecutionAgent:
-    def __init__(self):
-        self.max_attempts = 5
+    def __init__(self, max_attempts: int = 5):
+        self.max_attempts = max_attempts
         self.coding_agent_dir = Path("coding_agent").absolute()
         self.coding_agent_dir.mkdir(exist_ok=True)
 
