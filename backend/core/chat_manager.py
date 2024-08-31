@@ -4,14 +4,15 @@ import json
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
 from utils.helpers import print_verbose
-from handlers.coding_agent import CodingAgent
-from handlers.execution_agent import ExecutionAgent
+from agents.coding_agent import CodingAgent
+from agents.execution_agent import ExecutionAgent
 from database.operations import ConversationMemory
 from langfuse.decorators import observe, langfuse_context
 
 class ChatManager:
     def __init__(self, message_queue: asyncio.Queue):
         self.message_queue = message_queue
+        
         self.coding_agent = CodingAgent()
         self.execution_agent = ExecutionAgent()
         self.llm = ChatGroq(
@@ -35,10 +36,6 @@ class ChatManager:
     async def chat(self, instructions: str, history: list, conversation_id: str, user_id: str, session):
         print_verbose(f"Starting agent conversation for instructions: {instructions}")
         
-        execution_id = str(uuid.uuid4())
-
-        message_counter = len(history) + 1
-
         user_message = {
             'type': 'chat_message',
             'message': {
@@ -46,8 +43,7 @@ class ChatManager:
                 'content': instructions,
             }
         }
-        ConversationMemory.add_message(session, user_id, conversation_id, message_counter, user_message)
-        message_counter += 1
+        ConversationMemory.add_message(session, user_id, conversation_id, user_message)
 
         # ToDo: figure out right history content - we should not use the whole history, but summarise it in some way
         if isinstance(history, list):
@@ -78,8 +74,7 @@ class ChatManager:
                     'content': f"Generated Code:\n\n```python\n{generated_code}\n```"
                 }
             }
-            ConversationMemory.add_message(session, user_id, conversation_id, message_counter, generated_code_message)
-            message_counter += 1
+            ConversationMemory.add_message(session, user_id, conversation_id, generated_code_message)
             
             await self.send(generated_code_message)
 
@@ -95,9 +90,7 @@ class ChatManager:
                         'content': f"Shell Execution Result:\n\n```\n{shell_result}\n```"
                     }
                 }
-                ConversationMemory.add_message(session, user_id, conversation_id, message_counter, shell_result_message)
-                message_counter += 1
-                await self.send(shell_result_message)
+                ConversationMemory.add_message(session, user_id, conversation_id, shell_result_message)
 
             if python_code:
                 python_success, python_result = await self.execution_agent.execute_python_code(python_code)
@@ -108,8 +101,7 @@ class ChatManager:
                         'content': f"Python Execution Result:\n\n```\n{python_result}\n```"
                     }
                 }
-                ConversationMemory.add_message(session, user_id, conversation_id, message_counter, python_result_message)
-                message_counter += 1
+                ConversationMemory.add_message(session, user_id, conversation_id, python_result_message)
                 
                 await self.send(python_result_message)
 
@@ -122,8 +114,7 @@ class ChatManager:
                             'content': f"Execution Summary:\n\n{summary}"
                         }
                     }
-                    ConversationMemory.add_message(session, user_id, conversation_id, message_counter, summary_message)
-                    message_counter += 1
+                    ConversationMemory.add_message(session, user_id, conversation_id, summary_message)
                     await self.send(summary_message)
                 else:
                     if attempt < self.execution_agent.max_attempts - 1:
@@ -135,22 +126,22 @@ class ChatManager:
 
             break
 
-        await self.send({
-            'type': 'result',
-            'execution_id': execution_id,
-            'generated_code': generated_code,
-            'output': python_result
-        })
+        # await self.send({
+        #     'type': 'result',
+        #     'execution_id': execution_id,
+        #     'generated_code': generated_code,
+        #     'output': python_result
+        # })
 
-        if python_result.startswith('{"data":[{"'):
-            plot_data = python_result[python_result.index('{"data":[{"'):]
-            await self.send({
-                'type': 'plotly',
-                'execution_id': execution_id,
-                'plot_data': plot_data
-            })
+        # if python_result.startswith('{"data":[{"'):
+        #     plot_data = python_result[python_result.index('{"data":[{"'):]
+        #     await self.send({
+        #         'type': 'plotly',
+        #         'execution_id': execution_id,
+        #         'plot_data': plot_data
+        #     })
 
-        return generated_code, python_result
+        return# generated_code, python_result
 
     @observe(as_type="generation")
     def generate_summary(self, instructions):
