@@ -2,10 +2,10 @@ import asyncio
 import uuid
 from fastapi import WebSocket, WebSocketDisconnect, Depends
 from sqlmodel import Session
-from database.operations import get_session
-from core.chat_manager import ChatManager
+from database.ConversationMemory import get_session
+from chat_workflow.chat_manager import ChatManager
 from utils.connection_manager import WebSocketConnectionManager, connection_manager
-from database.operations import ConversationMemory
+from database.ConversationMemory import ConversationMemory
 
 async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(get_session)):
     client_id = str(uuid.uuid4())
@@ -45,7 +45,7 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                 elif data['action'] == 'load_conversation':
                     conversation_id = data['conversation_id']
                     history = ConversationMemory.get_conversation_history(session, conversation_id, user_id)
-                    summary = ConversationMemory.get_summary(session, conversation_id)
+                    summary = ConversationMemory.get_summary(session, conversation_id, user_id)
                     
                     print(f"Loading conversation: {conversation_id}")
                     print(f"History length: {len(history)}")

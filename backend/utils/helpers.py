@@ -3,7 +3,7 @@ import venv
 from pathlib import Path
 import os
 from colorama import Fore, Style
-from core.config import verbose
+from chat_workflow.config import verbose
 
 # Create a virtual environment
 venv_path = Path("venv").absolute()

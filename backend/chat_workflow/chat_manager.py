@@ -6,7 +6,7 @@ from langchain.prompts import ChatPromptTemplate
 from utils.helpers import print_verbose
 from agents.coding_agent import CodingAgent
 from agents.execution_agent import ExecutionAgent
-from database.operations import ConversationMemory
+from database.ConversationMemory import ConversationMemory
 from langfuse.decorators import observe, langfuse_context
 
 class ChatManager:

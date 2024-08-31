@@ -1,7 +1,7 @@
 from fastapi import FastAPI
-from core.config import setup_app
-from core.websocket_handler import websocket_endpoint
-from database.operations import create_db_and_tables
+from chat_workflow.config import setup_app
+from chat_workflow.websocket_handler import websocket_endpoint
+from database.ConversationMemory import create_db_and_tables
 
 app = FastAPI()
 
