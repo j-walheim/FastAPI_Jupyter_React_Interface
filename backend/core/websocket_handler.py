@@ -12,7 +12,11 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
     await connection_manager.connect(websocket, client_id)
     
     user_id = "test_user"
-    
+
+
+    message_queue = asyncio.Queue()
+    asyncio.create_task(process_queue(message_queue, websocket))    
+                    
     try:
         while True:
             data = await websocket.receive_json()
@@ -22,14 +26,10 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                 instructions = data['message']
                 conversation_id = data['conversation_id']
                 history = ConversationMemory.get_conversation_history(session, conversation_id, user_id)
-                
-                message_queue = asyncio.Queue()
+
                 chat_manager = ChatManager(message_queue)
-                
-                # Start a task to process messages from the queue
-                asyncio.create_task(process_queue(message_queue, websocket))
-                
-                generated_code, execution_result = await chat_manager.chat(instructions, history, conversation_id, user_id, session)
+                                
+                await chat_manager.chat(instructions, history, conversation_id, user_id, session)
                 
             elif data['type'] == 'meta':
                 if data['action'] == 'get_conversations':
@@ -41,6 +41,7 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                         'action': 'conversations',
                         'data': conversations
                     }, websocket)
+
                 elif data['action'] == 'load_conversation':
                     conversation_id = data['conversation_id']
                     history = ConversationMemory.get_conversation_history(session, conversation_id, user_id)
@@ -79,6 +80,7 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                         'type': 'meta',
                         'action': 'conversation_loaded'
                     }, websocket)
+                    
                 elif data['action'] == 'new_conversation':
                     new_conversation_id = str(uuid.uuid4())
                     ConversationMemory.create_new_conversation(session, user_id, new_conversation_id)
