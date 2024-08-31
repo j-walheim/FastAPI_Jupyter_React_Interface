@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import CodeEditor from './components/CodeEditor';
 import ConversationSidebar from './components/ConversationSidebar';
-import { v4 as uuidv4 } from 'uuid';
 import './App.css';
 import ChatMessage from './components/ChatMessage';
 
@@ -123,6 +122,7 @@ function App() {
                 key={index}
                 message={msg}
                 isLastMessage={index === chatHistory.length - 1}
+                isUserMessage={msg.role === 'human'}
               />
             ))
           ) : (
