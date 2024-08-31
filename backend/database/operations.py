@@ -17,13 +17,17 @@ def get_session():
 
 class ConversationMemory:
     @staticmethod
-    def add_message(session: Session, user_id: str, conversation_id: str, message_number: int, message_data: dict):
+    def add_message(session: Session, user_id: str, conversation_id: str, message_data: dict):
         conversation = session.exec(select(Conversation).where(Conversation.id == conversation_id)).first()
         if not conversation:
             conversation = Conversation(id=conversation_id, user_id=user_id)
             session.add(conversation)
             session.commit()
             session.refresh(conversation)
+        
+        # Get the current message count for this conversation
+        message_count = session.exec(select(Message.message_number).where(Message.conversation_id == conversation_id).order_by(Message.message_number.desc())).first()
+        message_number = (message_count or 0) + 1
         
         message = Message(
             conversation_id=conversation_id,
@@ -33,6 +37,7 @@ class ConversationMemory:
         )
         session.add(message)
         session.commit()
+        return message_number
 
     @staticmethod
     def get_conversation_history(session: Session, conversation_id: str, user_id: str):
