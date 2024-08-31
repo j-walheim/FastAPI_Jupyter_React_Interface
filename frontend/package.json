@@ -3,11 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "plotly.js": "^2.34.0",
-    "react": "^17.0.2",
-    "react-dom": "^17.0.2",
+    "css-select": "^5.1.0",
+    "nth-check": "^2.1.1",
+    "plotly.js": "^2.35.0",
+    "postcss": "^8.4.41",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
     "react-plotly.js": "^2.6.0",
-    "react-scripts": "^5.0.1"
+    "react-scripts": "^5.0.1",
+    "resolve-url-loader": "^5.0.0",
+    "svgo": "^3.3.2"
   },
   "scripts": {
     "start": "react-scripts start",

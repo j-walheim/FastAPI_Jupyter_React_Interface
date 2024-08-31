@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 function ChatMessage({ message, isLastMessage }) {
   const [isExpanded, setIsExpanded] = useState(!message.collapsible || isLastMessage);
@@ -18,9 +19,9 @@ function ChatMessage({ message, isLastMessage }) {
         )}
       </div>
       <div className="message-content">
-        {message.content}
+        <ReactMarkdown>{message.content}</ReactMarkdown>
         {message.collapsible && isExpanded && message.details && (
-          <pre className="message-details">{message.details}</pre>
+          <pre className="message-details"><ReactMarkdown>{message.details}</ReactMarkdown></pre>
         )}
       </div>
     </div>
