@@ -10,10 +10,23 @@ function ChatMessage({ message, isLastMessage, isUserMessage }) {
     setIsExpanded(!isExpanded);
   };
 
+  const getRoleName = (role) => {
+    switch (role) {
+      case 'human':
+        return 'User';
+      case 'assistant':
+        return 'AI';
+      case 'system':
+        return 'System';
+      default:
+        return role;
+    }
+  };
+
   return (
     <div className={`chat-message ${message.role}`}>
       <div className="message-header" onClick={toggleExpand}>
-        <span>{message.role === 'human' ? 'User' : message.role === 'assistant' ? 'AI' : 'System'}</span>
+        <span>{getRoleName(message.role)}</span>
         <button>{isExpanded ? 'Collapse' : 'Expand'}</button>
       </div>
       {isExpanded && (
