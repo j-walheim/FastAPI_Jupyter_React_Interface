@@ -35,6 +35,10 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                 if data['action'] == 'get_conversations':
                     print("Fetching conversations")
                     conversations = ConversationMemory.get_all_conversations(session, user_id)
+                    if not conversations:
+                        new_conversation_id = str(uuid.uuid4())
+                        ConversationMemory.create_new_conversation(session, user_id, new_conversation_id)
+                        conversations = ConversationMemory.get_all_conversations(session, user_id)
                     print(f"Found {len(conversations)} conversations")
                     await message_queue.put({
                         'type': 'meta',
@@ -43,6 +47,10 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                     })
 
                 elif data['action'] == 'load_conversation':
+                    if 'conversation_id' not in data:
+                        print("Error: 'conversation_id' missing in load_conversation request")
+                        print("Received data structure:", data)
+                        return
                     conversation_id = data['conversation_id']
                     history = ConversationMemory.get_conversation_history(session, conversation_id, user_id)
                     summary = ConversationMemory.get_summary(session, conversation_id, user_id)
@@ -84,11 +92,17 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                 elif data['action'] == 'new_conversation':
                     new_conversation_id = str(uuid.uuid4())
                     ConversationMemory.create_new_conversation(session, user_id, new_conversation_id)
+                    
+                    # Fetch updated conversation list
+                    conversations = ConversationMemory.get_all_conversations(session, user_id)
+                    
+                    # Send new conversation info and updated conversation list
                     await message_queue.put({
                         'type': 'meta',
                         'action': 'new_conversation',
                         'data': {
-                            'conversation_id': new_conversation_id
+                            'conversation_id': new_conversation_id,
+                            'conversations': conversations
                         }
                     })
 

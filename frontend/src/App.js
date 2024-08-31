@@ -47,6 +47,9 @@ function App() {
         switch (data.action) {
           case 'conversations':
             setConversations(data.data.reverse());
+            if (data.data.length > 0 && !conversationId) {
+              handleLoadConversation(data.data[0].conversation_id);
+            }
             break;
           case 'conversation_info':
             setConversationId(data.data.id);
@@ -58,7 +61,7 @@ function App() {
           case 'new_conversation':
             setConversationId(data.data.conversation_id);
             setConversations(prevConversations => [
-              { id: data.data.conversation_id, summary: 'New conversation' },
+              { conversation_id: data.data.conversation_id, summary: data.data.summary },
               ...prevConversations
             ]);
             setChatHistory([]);

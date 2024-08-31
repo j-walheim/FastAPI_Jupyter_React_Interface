@@ -17,7 +17,9 @@ function ConversationSidebar({ conversations, onSelectConversation, currentConve
             onClick={() => onSelectConversation(conv.conversation_id)}
             className={conv.conversation_id === currentConversationId ? 'active' : ''}
           >
-            <span className="conversation-id">{conv.conversation_id.slice(0, 8)}...</span>
+            <span className="conversation-id">
+              {conv.conversation_id ? conv.conversation_id.slice(0, 8) + '...' : 'No ID'}
+            </span>
             <span className="conversation-summary">{truncateSummary(conv.summary)}</span>
           </li>
         ))}
