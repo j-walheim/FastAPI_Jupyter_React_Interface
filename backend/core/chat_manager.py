@@ -54,7 +54,7 @@ class ChatManager:
 
         if len(history) < 1:
             summary = self.generate_summary(instructions)
-            ConversationMemory.update_summary(session, user_id, summary)
+            ConversationMemory.update_summary(session, conversation_id, user_id, summary)
             print_verbose(f"Generated and stored summary: {summary}")
         
         if context:
@@ -138,7 +138,7 @@ class ChatManager:
             max_retries=2
         )
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a summarization assistant. Generate a one-sentence summary of the given conversation instructions."),
+            ("system", "Create a concise high-level summary what the following conversation is about. Use 10 words max. "),
             ("human", "{instructions}")
         ])
         response = llm.invoke(prompt.format_messages(instructions=instructions))

@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from sqlmodel import Session, select, create_engine, SQLModel
+from sqlalchemy import and_  # Add this import
 from .models import Message, Conversation
 from utils.helpers import print_verbose
 import os
@@ -18,9 +19,9 @@ def get_session():
 class ConversationMemory:
     @staticmethod
     def add_message(session: Session, user_id: str, conversation_id: str, message_data: dict):
-        conversation = session.exec(select(Conversation).where(Conversation.id == conversation_id)).first()
+        conversation = session.exec(select(Conversation).where(Conversation.conversation_id == conversation_id)).first()
         if not conversation:
-            conversation = Conversation(id=conversation_id, user_id=user_id)
+            conversation = Conversation(conversation_id=conversation_id, user_id=user_id)
             session.add(conversation)
             session.commit()
             session.refresh(conversation)
@@ -45,26 +46,32 @@ class ConversationMemory:
         return [(message.message_number, json.loads(message.message_data)) for message in messages]
 
     @staticmethod
-    def update_summary(session: Session, user_id: str, summary: str):
-        conversation = session.exec(select(Conversation).where(Conversation.user_id == user_id)).first()
+    def update_summary(session: Session, conversation_id: str, user_id: str, summary: str):
+        conversation = session.exec(select(Conversation).where(
+            and_(Conversation.conversation_id == conversation_id, Conversation.user_id == user_id)
+        )).first()
         if conversation:
             conversation.summary = summary
             conversation.updated_at = datetime.utcnow()
             session.commit()
+        else:
+            print_verbose(f"Conversation not found for conversation_id: {conversation_id} and user_id: {user_id}")
 
     @staticmethod
-    def get_summary(session: Session, conversation_id: str):
-        conversation = session.exec(select(Conversation).where(Conversation.id == conversation_id)).first()
+    def get_summary(session: Session, conversation_id: str, user_id: str):
+        conversation = session.exec(select(Conversation).where(
+            and_(Conversation.conversation_id == conversation_id, Conversation.user_id == user_id)
+        )).first()
         return conversation.summary if conversation else None
 
     @staticmethod
     def get_all_conversations(session: Session, user_id: str):
         conversations = session.exec(select(Conversation).where(Conversation.user_id == user_id)).all()
-        return [{'id': conv.id, 'summary': conv.summary or 'No summary available'} for conv in conversations]
+        return [{'conversation_id': conv.conversation_id, 'summary': conv.summary or 'No summary available'} for conv in conversations]
 
     @staticmethod
     def create_new_conversation(session: Session, user_id: str, conversation_id: str):
-        conversation = Conversation(id=conversation_id, user_id=user_id)
+        conversation = Conversation(conversation_id=conversation_id, user_id=user_id)
         session.add(conversation)
         session.commit()
         return conversation
