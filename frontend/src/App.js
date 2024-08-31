@@ -7,8 +7,6 @@ import ChatMessage from './components/ChatMessage';
 
 function App() {
   const [instructions, setInstructions] = useState('create a survival plot for IO vs. Chemo and save it as survival.png');
-  const [output, setOutput] = useState('');
-  const [generatedCode, setGeneratedCode] = useState('');
   const [conversationId, setConversationId] = useState('');
   const [conversations, setConversations] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
@@ -75,8 +73,7 @@ function App() {
     return () => {
       ws.current.close();
     };
-  }, []);
-
+  }, []); // Empty dependency array ensures this runs only once on mount
   const handleSubmit = (e) => {
     e.preventDefault();
     if (ws.current.readyState === WebSocket.OPEN) {
