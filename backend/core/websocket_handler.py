@@ -36,11 +36,11 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                     print("Fetching conversations")
                     conversations = ConversationMemory.get_all_conversations(session, user_id)
                     print(f"Found {len(conversations)} conversations")
-                    await connection_manager.send_message({
+                    await message_queue.put({
                         'type': 'meta',
                         'action': 'conversations',
                         'data': conversations
-                    }, websocket)
+                    })
 
                 elif data['action'] == 'load_conversation':
                     conversation_id = data['conversation_id']
@@ -50,47 +50,47 @@ async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(ge
                     print(f"Loading conversation: {conversation_id}")
                     print(f"History length: {len(history)}")
                     
-                    await connection_manager.send_message({
+                    await message_queue.put({
                         'type': 'meta',
                         'action': 'conversation_info',
                         'data': {
                             'id': conversation_id,
                             'summary': summary
                         }
-                    }, websocket)
+                    })
                     
                     for msg_number, msg_data in history:
                         try:
                             parsed_msg = msg_data
                             message_content = parsed_msg['message']['content']
 
-                            await connection_manager.send_message({
+                            await message_queue.put({
                                 'type': 'chat_message',
                                 'message': {
                                     'role': parsed_msg['message']['role'],
                                     'content': message_content
                                 }
-                            }, websocket)
-                            print(f"  Sent message {msg_number}: Role: {parsed_msg['message']['role']}, Content: {message_content[:50]}...")
+                            })
+                            print(f"  Queued message {msg_number}: Role: {parsed_msg['message']['role']}, Content: {message_content[:50]}...")
                         except Exception as e:
-                            print(f"  Error sending message {msg_number}: {e}")
+                            print(f"  Error queueing message {msg_number}: {e}")
                             print(f"  Raw message data: {msg_data}")
                     
-                    await connection_manager.send_message({
+                    await message_queue.put({
                         'type': 'meta',
                         'action': 'conversation_loaded'
-                    }, websocket)
+                    })
                     
                 elif data['action'] == 'new_conversation':
                     new_conversation_id = str(uuid.uuid4())
                     ConversationMemory.create_new_conversation(session, user_id, new_conversation_id)
-                    await connection_manager.send_message({
+                    await message_queue.put({
                         'type': 'meta',
                         'action': 'new_conversation',
                         'data': {
                             'conversation_id': new_conversation_id
                         }
-                    }, websocket)
+                    })
 
     except WebSocketDisconnect:
         await connection_manager.disconnect(websocket)
