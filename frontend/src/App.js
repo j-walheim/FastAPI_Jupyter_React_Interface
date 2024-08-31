@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import CodeEditor from './components/CodeEditor';
+import ChatInput from './components/ChatInput';
 import ConversationSidebar from './components/ConversationSidebar';
 import './App.css';
 import ChatMessage from './components/ChatMessage';
@@ -76,8 +76,7 @@ function App() {
       ws.current.close();
     };
   }, []); // Empty dependency array ensures this runs only once on mount
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = () => {
     if (ws.current.readyState === WebSocket.OPEN) {
       setChatHistory(prevHistory => [
         ...prevHistory,
@@ -115,28 +114,27 @@ function App() {
       <div className="main-content">
         <h1>React - FastAPI - Coding Agent</h1>
         <p>Current Conversation ID: {conversationId}</p>
-        <div className="chat-history">
-          {chatHistory.length > 0 ? (
-            chatHistory.map((msg, index) => (
-              <ChatMessage
-                key={index}
-                message={msg}
-                isLastMessage={index === chatHistory.length - 1}
-                isUserMessage={msg.role === 'human'}
-              />
-            ))
-          ) : (
-            <p>No messages in this conversation yet.</p>
-          )}
-        </div>
-        <form onSubmit={handleSubmit}>
-          <CodeEditor
-            code={instructions}
-            setCode={setInstructions}
-            placeholder="Enter instructions here"
+        <div className="chat-container">
+          <div className="chat-history">
+            {chatHistory.length > 0 ? (
+              chatHistory.map((msg, index) => (
+                <ChatMessage
+                  key={index}
+                  message={msg}
+                  isLastMessage={index === chatHistory.length - 1}
+                  isUserMessage={msg.role === 'human'}
+                />
+              ))
+            ) : (
+              <p>No messages in this conversation yet.</p>
+            )}
+          </div>
+          <ChatInput
+            message={instructions}
+            setMessage={setInstructions}
+            onSend={handleSubmit}
           />
-          <button type="submit">Generate and Execute Code</button>
-        </form>
+        </div>
       </div>
     </div>
   );

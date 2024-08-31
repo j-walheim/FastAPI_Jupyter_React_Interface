@@ -28,8 +28,26 @@ code {
 
 .main-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   padding: 2rem;
+}
+
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px;
+  background-color: #f5f8fa;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.chat-history {
+  flex: 1;
   overflow-y: auto;
+  margin-bottom: 16px;
 }
 
 h1 {
@@ -103,16 +121,6 @@ pre {
   color: #2c3e50;
   font-size: 1.5rem;
   margin-bottom: 1rem;
-}
-
-.chat-history {
-  max-height: 600px;
-  overflow-y: auto;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-  background-color: #f9f9f9;
 }
 
 .chat-message {
