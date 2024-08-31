@@ -126,22 +126,7 @@ class ChatManager:
 
             break
 
-        # await self.send({
-        #     'type': 'result',
-        #     'execution_id': execution_id,
-        #     'generated_code': generated_code,
-        #     'output': python_result
-        # })
-
-        # if python_result.startswith('{"data":[{"'):
-        #     plot_data = python_result[python_result.index('{"data":[{"'):]
-        #     await self.send({
-        #         'type': 'plotly',
-        #         'execution_id': execution_id,
-        #         'plot_data': plot_data
-        #     })
-
-        return# generated_code, python_result
+        return
 
     @observe(as_type="generation")
     def generate_summary(self, instructions):
